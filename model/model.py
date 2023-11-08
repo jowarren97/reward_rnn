@@ -24,6 +24,8 @@ def init_weights_rnn(rnn):
 
 
 class ThresholdedRNNCell(nn.Module):
+    """Had to make custom RNN cell bc torch.nn.rnn.forward() processes multiple timesteps (want to threshold 
+    act each timestep)"""
     def __init__(self, input_size, hidden_size, threshold, device):
         super(ThresholdedRNNCell, self).__init__()
         self.input_size = input_size
