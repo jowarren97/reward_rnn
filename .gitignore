@@ -1,0 +1,4 @@
+data_share
+*.npz
+*.pyc
+*.xml
