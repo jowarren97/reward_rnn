@@ -2,7 +2,7 @@
 
 ## RNN set up:
 
-> Run train.py to train network, plot_rnn.ipynb to visualise inputs/targets/outputs
+- run train.py to train network, plot_rnn.ipynb to visualise inputs/targets/outputs
 
 ### Data method
 - current data method:
@@ -11,9 +11,9 @@
     - RNN outputs actions: do nothing, do nothing, port, port
     - targets are the perfect actions (no bayesian yet)
     - gets accuracy on each step: 1.0, 1.0, 1.0, 0.5
-    - for final step (choice, just picks same port regardless of reversals)
+    - for final step (choice), just picks same port regardless of reversals)
 
-- do I need to change the data method?
+- **do I need to change the data method?**
     - alternative is to compute behaviour offline using ideal bayesian agent, then train RNN on this
 
 ### Things tried (but didn't help)
