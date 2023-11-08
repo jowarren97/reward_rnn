@@ -3,3 +3,6 @@ data_share
 *.pyc
 *.xml
 requirements.txt
+*.code-workspace
+.idea
+.ipynb_checkpoints
