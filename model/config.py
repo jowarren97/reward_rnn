@@ -29,7 +29,7 @@ class Conf():
     # task params
     reward_prob = 1.0
     n_reversals = 10
-    mean_trials_since_reversal = 15
+    max_trials_since_reversal = 15
     jitter = 5
 
     # data output params
