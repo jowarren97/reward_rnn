@@ -1,6 +1,10 @@
 # Code for simulating RNN and generating plots in "Complementary task representations in hippocampus and prefrontal cortex for generalizing the structure of problems.(2022) Nature Neuroscience"
 
 ## RNN set up:
+
+> Run train.py to train network, plot_rnn.ipynb to visualise inputs/targets/outputs
+
+### Data method
 - current data method:
     - feed in 4 timesteps at a time to RNN: reward, ITI, init, choice
     - reward is computed using RNN choice from previous timestep
@@ -10,10 +14,16 @@
     - for final step (choice, just picks same port regardless of reversals)
 
 - do I need to change the data method?
-    - alternative is to compute behaviour offline using ideal bayesian agent
+    - alternative is to compute behaviour offline using ideal bayesian agent, then train RNN on this
 
+### Things tried (but didn't help)
+- identity recurrent initialisation (with and without Xavier on feedforward, small diagonal normal distr noise, biases on/off)
+- thresholding on relu units
+- lots of units
+
+### To try
 - make sure feedfwd input ~ recurrent input, can scale initialisation of fwd pathway
-- hold out some layouts? yes, do train test error
+- hold out some layouts? yes, do train-test error
 - param norms, diff losses, act norms
 
 > This repository contains Jupyter Notebooks and .py code for replicating figures in our paper. Behavioural and neural data needs to be downloaded from [here](https://doi.org/10.6084/m9.figshare.19773334) 
