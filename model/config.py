@@ -1,6 +1,8 @@
 import torch
+import os
 
 class Conf():
+    dtype = torch.float32
     dev = torch.device("cpu")
     # # slower with mps for some reason
     # if torch.backends.mps.is_available():
@@ -34,7 +36,7 @@ class Conf():
 
     # data output params
     print_loss_interval = 50
-    save_data_interval = 100
-    save_dir = '../'
+    save_data_interval = 200
+    save_dir = os.path.join(os.getcwd(), 'run_data')
 
 

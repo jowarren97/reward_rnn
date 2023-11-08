@@ -111,19 +111,19 @@ class DataCurriculum:
         """Generate the target sequence based on the current block's data."""
         return self.current_block.get_target_sequence()
 
-    def set_and_get_next_input(self, model_output, target):
+    def step(self, model_output=None, target=None):
         """Set the reward for the next input based on model's output, and get next input."""
+        if model_output is not None and target is not None:
+            trial_stages_correct = np.argmax(model_output[:, -2:, :], axis=-1) == np.argmax(target[:, -2:, :], axis=-1)
 
-        trial_stages_correct = np.argmax(model_output[:, -2:, :], axis=-1) == np.argmax(target[:, -2:, :], axis=-1)
+            reward = np.all(trial_stages_correct, axis=-1)
 
-        reward = np.all(trial_stages_correct, axis=-1)
+            self.current_block.reward_vector[:, -1] = reward
+            self.trials_since_reversal += 1
 
-        self.current_block.reward_vector[:, -1] = reward
-        self.trials_since_reversal += 1
+            self.check_and_switch_block()
 
-        self.check_and_switch_block()
-
-        return self.get_data_sequence()
+        return self.get_data_sequence(), self.get_target_sequence()
 
     def check_and_switch_block(self):
         """Check elapsed trials since reversal and reverse if required. After, check total number of reversals and switch block if required"""

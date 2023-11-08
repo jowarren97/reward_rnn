@@ -4,9 +4,12 @@ import pickle
 import os
 
 class LearningLogger:
-    def __init__(self, save_dir='./data/'):
+    def __init__(self, Conf):
         self.reset()
-        self.save_dir = save_dir
+        self.save_dir = Conf.save_dir
+
+        if not os.path.exists(self.save_dir):
+            os.makedirs(self.save_dir)
 
     def reset(self):
         self.accuracy_steps = 0
@@ -70,7 +73,7 @@ class LearningLogger:
                      'choices_hist': self.choices_hist,
                      'accuracy_steps': self.accuracy_steps}
 
-        np.savez(fname, self.inputs_hist, self.targets_hist, self.choices_hist, self.accuracy_steps)
+        np.savez(fpath, self.inputs_hist, self.targets_hist, self.choices_hist, self.accuracy_steps)
 
 
 def compute_trial_accuracy(logits, targets, inputs):

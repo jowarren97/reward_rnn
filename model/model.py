@@ -18,7 +18,7 @@ def init_weights_rnn(rnn):
             # print(param.data)
         #     nn.init.xavier_uniform_(param.data)
         if 'weight_hh' in name:  # Hidden-to-hidden weights
-            nn.init.eye_(param.data) + torch.normal(torch.zeros_like(param.data), 0.01)
+            nn.init.eye_(param.data) + torch.normal(torch.zeros_like(param.data), 0.01, dtype=Conf.dtype, device=Conf.dev)
         # elif 'bias' in name:
         #     param.data.zero_()
 
@@ -26,19 +26,20 @@ def init_weights_rnn(rnn):
 class ThresholdedRNNCell(nn.Module):
     """Had to make custom RNN cell bc torch.nn.rnn.forward() processes multiple timesteps (want to threshold 
     act each timestep)"""
-    def __init__(self, input_size, hidden_size, threshold, device):
+    def __init__(self, input_size, hidden_size, threshold, device, dtype):
         super(ThresholdedRNNCell, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.threshold = threshold
-        self.i2h = nn.Linear(input_size, hidden_size, device=device)
-        self.h2h = nn.Linear(hidden_size, hidden_size, device=device)
+        self.dtype = dtype
+        self.i2h = nn.Linear(input_size, hidden_size, device=device, dtype=dtype)
+        self.h2h = nn.Linear(hidden_size, hidden_size, device=device, dtype=dtype)
         self.device = device
 
     def forward(self, x, hidden=None):
         # Initialize hidden state if not provided
         if hidden is None:
-            hidden = torch.zeros(x.size(0), self.hidden_size, device=self.device)
+            hidden = torch.zeros(x.size(0), self.hidden_size, device=self.device, dtype=self.dtype)
 
         outputs = []
         # Process each time step with the RNN cell
@@ -60,22 +61,22 @@ class ThresholdedRNNCell(nn.Module):
 class SimpleRNN(nn.Module):
     def __init__(self, config):
         super(SimpleRNN, self).__init__()
-        self.device = config.dev
         
         if config.threshold is not None:
             print('Using thresholded RNN')
-            self.rnn = ThresholdedRNNCell(config.input_dim, config.hidden_dim, threshold=config.threshold, device=config.dev)
+            self.rnn = ThresholdedRNNCell(config.input_dim, config.hidden_dim, threshold=config.threshold, device=config.dev,
+                                          dtype = config.dtype)
             # weight init doesn't seem to be working
             if Conf.weight_init:
                 init_weights_thresholded_rnn(self.rnn)
         else:
             print('Using standard RNN')
             self.rnn = nn.RNN(input_size=config.input_dim, hidden_size=config.hidden_dim, num_layers=1, batch_first=True,
-                              nonlinearity='relu', device=config.dev)
+                              nonlinearity='relu', device=config.dev, dtype=config.dtype)
             if Conf.weight_init:
                 init_weights_rnn(self.rnn)
 
-        self.linear = nn.Linear(config.hidden_dim, config.output_dim, device=config.dev)
+        self.linear = nn.Linear(config.hidden_dim, config.output_dim, device=config.dev, dtype=config.dtype)
 
     def forward(self, x, hidden=None):
         rnn_out, hidden = self.rnn(x, hidden)
