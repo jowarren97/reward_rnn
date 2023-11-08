@@ -1,6 +1,6 @@
 # For James
 
-> RNN model (in 'model' directory), contained within a clone of full repository for original paper (see [here](https://github.com/veronikasamborska1994/notebooks_paper)). Environment can be installed using environment.yml.
+> RNN model (in 'model' directory), contained within a clone of full [repository](https://github.com/veronikasamborska1994/notebooks_paper) for original paper. Environment can be installed using environment.yml.
 
 ## RNN set up:
 
