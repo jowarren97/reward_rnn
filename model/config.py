@@ -17,7 +17,7 @@ class Conf():
 
     # network params
     input_dim = 10  # onehot: 9 port lights, 1 reward input
-    hidden_dim = 1000
+    hidden_dim = 200
     output_dim = 10  # onehot: 9 port choices, 1 do-nothing choice
 
     # experimental stuff
