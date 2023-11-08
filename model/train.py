@@ -22,6 +22,7 @@ import torch.nn as nn
 import torch
 from config import Conf
 from logger import LearningLogger
+from time import time
 
 print("Using device: ", Conf.dev)
 
@@ -35,6 +36,7 @@ data_curriculum = DataCurriculum(Conf)
 logger = LearningLogger()
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr = Conf.lr)
+epoch_time = 0
 
 def step(model, num_trials, logger=None):
     hidden = None
@@ -50,17 +52,23 @@ def step(model, num_trials, logger=None):
     for trial in range(num_trials):
         # Forward pass
         logits, hidden = model(data_tensor, hidden)
+
+        if Conf.sample:
+            dist = torch.distributions.categorical.Categorical(logits=logits)
+            choices = torch.nn.functional.one_hot(dist.sample(), num_classes=Conf.input_dim)
+        else:
+            choices = logits
         
         # store data in logger for later computation of accuracies
         if logger is not None:
-            logger.log(logits.detach(), target_tensor.detach(), data_tensor.detach())
+            logger.log(logits.cpu().detach(), target_tensor.cpu().detach(), data_tensor.cpu().detach())
 
         loss_trial = criterion(logits, target_tensor)
         loss += loss_trial
 
         # Prepare next input based on the output and target (computes if reward should be recieved, 
         # and also whether reversal or block switch occurs)
-        next_input = data_curriculum.set_and_get_next_input(logits.cpu().detach().numpy(), 
+        next_input = data_curriculum.set_and_get_next_input(choices.cpu().detach().numpy(), 
                                                             target_tensor.cpu().detach().numpy())
         next_target = data_curriculum.get_target_sequence()
 
@@ -75,6 +83,7 @@ for epoch in range(Conf.num_epochs):
     model.train()
     optimizer.zero_grad()
 
+    start = time()
     loss = step(model, Conf.num_trials, logger)
 
     if not debug:
@@ -82,6 +91,9 @@ for epoch in range(Conf.num_epochs):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
+
+    end = time()
+    epoch_time = (end - start) if epoch == 0 else epoch_time + (end - start) / Conf.print_loss_interval
 
     # Print loss
     if epoch % Conf.print_loss_interval == 0:
@@ -91,11 +103,16 @@ for epoch in range(Conf.num_epochs):
         with torch.no_grad():
             step(model, Conf.num_trials_test, logger)
         
-        logger.get_data()
-        print('accuracy all:', logger.accuracy_all.numpy())
-        print('accuracy steps:', logger.accuracy_steps, ', pair:', logger.accuracy_pair.numpy())
+        # print('accuracy all steps:', logger.accuracy_all.numpy())
+        # print('accuracy each step:', logger.accuracy_steps)
+        # print('accuracy A or B:', logger.accuracy_pair.numpy())
         # print('accuracy steps 1:', acc_1, ', accuracy_steps 2:', acc_2)
-        print(f"Epoch [{epoch}/{Conf.num_epochs}], Loss: {loss.item():.4f}")
+        print(f"\nEpoch [{epoch}/{Conf.num_epochs}]")
+        print(f"Time:\t\t\t{epoch_time:.2f}s")
+        print(f"Loss:\t\t\t{loss.item():.4f}")
+        logger.get_data()
+        logger.print()
+        epoch_time = 0
 
         if epoch % Conf.save_data_interval == 0:
             logger.save_data(fname = Conf.save_dir + 'data_' + str(epoch))

@@ -24,13 +24,13 @@ def init_weights_rnn(rnn):
 
 
 class ThresholdedRNNCell(nn.Module):
-    def __init__(self, input_size, hidden_size, threshold, device=Conf.dev):
+    def __init__(self, input_size, hidden_size, threshold, device):
         super(ThresholdedRNNCell, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.threshold = threshold
-        self.i2h = nn.Linear(input_size, hidden_size)
-        self.h2h = nn.Linear(hidden_size, hidden_size)
+        self.i2h = nn.Linear(input_size, hidden_size, device=device)
+        self.h2h = nn.Linear(hidden_size, hidden_size, device=device)
         self.device = device
 
     def forward(self, x, hidden=None):
@@ -64,12 +64,14 @@ class SimpleRNN(nn.Module):
             print('Using thresholded RNN')
             self.rnn = ThresholdedRNNCell(config.input_dim, config.hidden_dim, threshold=config.threshold, device=config.dev)
             # weight init doesn't seem to be working
-            init_weights_thresholded_rnn(self.rnn)
+            if Conf.weight_init:
+                init_weights_thresholded_rnn(self.rnn)
         else:
             print('Using standard RNN')
             self.rnn = nn.RNN(input_size=config.input_dim, hidden_size=config.hidden_dim, num_layers=1, batch_first=True,
-                              nonlinearity='relu', device=config.device)
-            init_weights_rnn(self.rnn)
+                              nonlinearity='relu', device=config.dev)
+            if Conf.weight_init:
+                init_weights_rnn(self.rnn)
 
         self.linear = nn.Linear(config.hidden_dim, config.output_dim, device=config.dev)
 

@@ -54,6 +54,12 @@ class LearningLogger:
 
         return self.accuracy_steps
 
+    def print(self):
+        trial_stages = ['rew', 'delay', 'init', 'choice']
+        print('Accuracy all steps:\t' + f'{self.accuracy_all:.1f}')
+        print('Accuracy each step:\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(self.accuracy_steps, trial_stages)]))
+        print('Accuracy A or B:\t\t\t\t\t\t\t\t' + f'{self.accuracy_pair:.1f}')
+
     def save_data(self, fname='data'):
         self.get_data()
 

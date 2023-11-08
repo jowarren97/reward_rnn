@@ -9,16 +9,18 @@
 ### Data method
 - current data method:
     - feed in 4 timesteps at a time to RNN: reward, ITI, init, choice
-    - reward is computed using RNN choice from previous timestep
+    - reward is computed using RNN choice from previous trial
     - RNN outputs actions: do nothing, do nothing, port, port
-    - targets are the perfect actions (no bayesian yet)
+    - targets are the perfect actions (no bayesian yet), reward probability is 1.0 (not 0.8 from paper)
     - gets accuracy on each step: 1.0, 1.0, 1.0, 0.5
     - for final step (choice), just picks same port regardless of reversals)
 
 - **do I need to change the data method?**
     - alternative is to compute behaviour offline using ideal bayesian agent, then train RNN on this
+    - could also add some kind of exploration in action-selection? 
 
 ### Things tried (but didn't help)
+- choosing actions by sampling from RNN logits vs taking max logit (current method, set using Conf.sample)
 - identity recurrent initialisation (with and without Xavier on feedforward, small diagonal normal distr noise, biases on/off)
 - thresholding on relu units
 - lots of units
