@@ -9,9 +9,9 @@
 ### Data method
 - current data method:
     - feed in 4 timesteps at a time to RNN: reward, ITI, init, choice
-    - reward is computed using RNN choice from previous trial
-    - RNN outputs actions: do nothing, do nothing, port, port
-    - targets are the perfect actions (no bayesian yet), reward probability is 1.0 (not 0.8 from paper)
+    - reward is computed using RNN choices from previous trial (final two actions, i.e. init, choice, need to be correct)
+    - RNN outputs actions: do nothing, do nothing, port id, port id
+    - targets are the perfect actions (no bayesian agemt yet), reward probability is 1.0 (not 0.8 from paper)
     - gets accuracy on each step: 1.0, 1.0, 1.0, 0.5
     - for final step (choice), just picks same port regardless of reversals)
 
