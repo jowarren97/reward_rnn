@@ -171,13 +171,16 @@ class DataCurriculum:
         if ground_truth is not None:
             if self.config.use_rnn_actions:
                 trial_stages_correct = np.argmax(model_output[:, -2:, :], axis=-1) == np.argmax(ground_truth[:, -2:, :], axis=-1)
-                reward = np.all(trial_stages_correct, axis=-1)
+                trial_correct = np.all(trial_stages_correct, axis=-1)
             else:
-                reward = np.argmax(self.optimal_agent.last_choice_onehot, axis=-1) == np.argmax(ground_truth[:, -1, :], axis=-1)
+                trial_correct = np.argmax(self.optimal_agent.last_choice_onehot, axis=-1) == np.argmax(ground_truth[:, -1, :], axis=-1)
 
-            self.optimal_agent.update_beliefs(reward, choice=model_output[:, -1, :] if self.config.use_rnn_actions else None)
+            ps = np.random.uniform(size=(self.batch_size,))
+            reward_probabilistic = np.where(trial_correct, ps < self.reward_prob, ps > self.reward_prob)
+            # reward_probabilistic = reward
+            self.optimal_agent.update_beliefs(reward_probabilistic, choice=model_output[:, -1, :] if self.config.use_rnn_actions else None)
 
-            self.current_block.reward_vector[:, -1] = reward
+            self.current_block.reward_vector[:, -1] = reward_probabilistic
             self.trials_since_reversal += 1
 
             self.check_and_switch_block()

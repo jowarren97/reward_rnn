@@ -28,7 +28,10 @@ class BayesAgent:
         p_data = p_data_given_A_high * self.p_A_high + p_data_given_B_high * (1 - self.p_A_high)
         
         # Update the posterior beliefs
-        self.p_A_high = np.where(p_data, (p_data_given_A_high * self.p_A_high / p_data), 1-self.p_A_high)
+        # self.p_A_high = np.where(p_data>0, (p_data_given_A_high * self.p_A_high / p_data), 1-self.p_A_high)
+        new_belief = np.where(p_data>0, (p_data_given_A_high * self.p_A_high / p_data), 1-self.p_A_high)
+        self.p_A_high = self.config.alpha * new_belief + (1 - self.config.alpha) * ((self.p_A_high + 0.5) / 2)
+
 
     def switch(self, switch_mask, a_b_vector):
         switch_mask = switch_mask[:, np.newaxis]

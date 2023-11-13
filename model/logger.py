@@ -22,35 +22,40 @@ class LearningLogger:
         self.choices_hist_buffer = []
         self.ground_truth_hist_buffer = []
 
-    def log(self, logits, targets, inputs, ground_truth):
+    def log(self, logits=None, targets=None, inputs=None, ground_truth=None):
         self.n_trials += 1
 
-        accuracy_all, accuracy_steps, accuracy_pair = compute_trial_accuracy(logits, targets, inputs)
+        if logits is not None:
+            accuracy_all, accuracy_steps, accuracy_pair = compute_trial_accuracy(logits, targets, inputs)
 
-        self.accuracy_steps = ( self.accuracy_steps * (self.n_trials - 1) + accuracy_steps ) / self.n_trials
-        self.accuracy_all = ( self.accuracy_all * (self.n_trials - 1) + accuracy_all ) / self.n_trials
-        self.accuracy_pair = ( self.accuracy_pair * (self.n_trials - 1) + accuracy_pair ) / self.n_trials
+            self.accuracy_steps = ( self.accuracy_steps * (self.n_trials - 1) + accuracy_steps ) / self.n_trials
+            self.accuracy_all = ( self.accuracy_all * (self.n_trials - 1) + accuracy_all ) / self.n_trials
+            self.accuracy_pair = ( self.accuracy_pair * (self.n_trials - 1) + accuracy_pair ) / self.n_trials
+            self.choices_hist_buffer.append(torch.nn.functional.softmax(logits, dim=-1).numpy())
 
-        self.inputs_hist_buffer.append(inputs.numpy())
-        self.targets_hist_buffer.append(targets.numpy())
-        self.ground_truth_hist_buffer.append(ground_truth)
-        self.choices_hist_buffer.append(torch.nn.functional.softmax(logits, dim=-1).numpy())
+        if inputs is not None:
+            self.inputs_hist_buffer.append(inputs.numpy())
+        if targets is not None:
+            self.targets_hist_buffer.append(targets.numpy())
+        if ground_truth is not None:
+            self.ground_truth_hist_buffer.append(ground_truth)
 
         # self.choices.append()
 
     def get_data(self):
         self.inputs_hist = np.concatenate(self.inputs_hist_buffer, axis=1)
         self.targets_hist = np.concatenate(self.targets_hist_buffer, axis=1)
-        self.choices_hist = np.concatenate(self.choices_hist_buffer, axis=1)
         self.ground_truth_hist = np.concatenate(self.ground_truth_hist_buffer, axis=1)
         
-        correct = np.argmax(self.choices_hist, axis=-1) == np.argmax(self.targets_hist, axis=-1)
+        if len(self.choices_hist_buffer):
+            self.choices_hist = np.concatenate(self.choices_hist_buffer, axis=1)
+            correct = np.argmax(self.choices_hist, axis=-1) == np.argmax(self.targets_hist, axis=-1)
 
-        # reshape into (batch_size, num_trial, num_trial_steps)
-        correct = np.reshape(correct, (correct.shape[0], correct.shape[1]//4, 4))
-        correct_all = np.all(correct, axis=-1)
+            # reshape into (batch_size, num_trial, num_trial_steps)
+            correct = np.reshape(correct, (correct.shape[0], correct.shape[1]//4, 4))
+            correct_all = np.all(correct, axis=-1)
 
-        self.accuracy_steps = 100 * np.sum(correct, axis=(0,1)) / (correct.shape[0] * correct.shape[1])
+            self.accuracy_steps = 100 * np.sum(correct, axis=(0,1)) / (correct.shape[0] * correct.shape[1])
         # acc_all = 100 * np.sum(correct_all, axis=(0,1)) / (correct_all.shape[0] * correct_all.shape[1])
         # acc_steps = []
         # for i in range(self.inputs_hist_buffer[0].shape[1]):
@@ -58,7 +63,7 @@ class LearningLogger:
         #     acc_step = 100 * np.sum(correct_step) / correct_step.size 
         #     acc_steps.append(acc_step)
 
-        return self.accuracy_steps
+        return
 
     def print(self):
         trial_stages = ['rew', 'delay', 'init', 'choice']

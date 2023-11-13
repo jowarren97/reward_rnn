@@ -28,6 +28,7 @@ class Conf():
     weight_init = False  # whether to use weight inits on RNN
     threshold = 5.0  # choose None to use vanilla RNN
     use_rnn_actions = False
+    alpha = 1.0
 
     # task params
     reward_prob = 1.0
