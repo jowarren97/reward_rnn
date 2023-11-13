@@ -20,8 +20,9 @@ class LearningLogger:
         self.targets_hist_buffer = []
         self.inputs_hist_buffer = []
         self.choices_hist_buffer = []
+        self.ground_truth_hist_buffer = []
 
-    def log(self, logits, targets, inputs):
+    def log(self, logits, targets, inputs, ground_truth):
         self.n_trials += 1
 
         accuracy_all, accuracy_steps, accuracy_pair = compute_trial_accuracy(logits, targets, inputs)
@@ -32,6 +33,7 @@ class LearningLogger:
 
         self.inputs_hist_buffer.append(inputs.numpy())
         self.targets_hist_buffer.append(targets.numpy())
+        self.ground_truth_hist_buffer.append(ground_truth)
         self.choices_hist_buffer.append(torch.nn.functional.softmax(logits, dim=-1).numpy())
 
         # self.choices.append()
@@ -40,6 +42,7 @@ class LearningLogger:
         self.inputs_hist = np.concatenate(self.inputs_hist_buffer, axis=1)
         self.targets_hist = np.concatenate(self.targets_hist_buffer, axis=1)
         self.choices_hist = np.concatenate(self.choices_hist_buffer, axis=1)
+        self.ground_truth_hist = np.concatenate(self.ground_truth_hist_buffer, axis=1)
         
         correct = np.argmax(self.choices_hist, axis=-1) == np.argmax(self.targets_hist, axis=-1)
 
@@ -67,13 +70,15 @@ class LearningLogger:
         self.get_data()
 
         fpath = os.path.join(self.save_dir, fname)
+        print(fpath)
 
         data_dict = {'inputs_hist': self.inputs_hist,
                      'targets_hist': self.targets_hist,
                      'choices_hist': self.choices_hist,
+                     'ground_truth': self.ground_truth_hist,
                      'accuracy_steps': self.accuracy_steps}
 
-        np.savez(fpath, self.inputs_hist, self.targets_hist, self.choices_hist, self.accuracy_steps)
+        np.savez(fpath, self.inputs_hist, self.targets_hist, self.choices_hist, self.ground_truth_hist, self.accuracy_steps)
 
 
 def compute_trial_accuracy(logits, targets, inputs):

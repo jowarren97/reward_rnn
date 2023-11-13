@@ -8,6 +8,7 @@ class Block:
         self.batch_size = config.batch_size
         self.input_dim = config.input_dim  # n_ports + 1 (reward input)
         self.output_dim = config.output_dim
+        self.config = config
 
         self.reward_vector = np.zeros((self.batch_size, self.input_dim))
         self.reward_vector[:, -1] = starting_rewards
@@ -87,9 +88,10 @@ class DataCurriculum:
         self.output_dim = config.input_dim
         self.reward_prob = config.reward_prob
         self.batch_size = config.batch_size
+        self.config = config
 
         self.current_block = Block(config)
-        self.optimal_agent = BayesAgent(batch_size=self.batch_size, p=self.reward_prob)
+        self.optimal_agent = BayesAgent(config, self.current_block.a_b_vector)
 
         # counters for reversals and block switches
         self.trials_since_reversal = np.zeros(self.batch_size)
@@ -108,28 +110,88 @@ class DataCurriculum:
         return self.current_block.get_data_sequence()
 
     def get_target_sequence(self):
-        """Generate the target sequence based on the current block's data."""
-        return self.current_block.get_target_sequence()
+        """Generate target sequence containing: inaction, inaction, init port, good port"""
+        target_sequence = []
 
-    def step(self, model_output=None, target=None):
+        do_nothing = np.zeros((self.batch_size, self.output_dim))
+        do_nothing[:, -1] = 1
+        target_sequence.append(do_nothing)
+        target_sequence.append(do_nothing)
+
+        # initiation port choice
+        target = self.current_block.init_vector
+        target_sequence.append(target)
+
+        # # Indices where values are 1 in two-hot matrix
+        # two_hot_indices = np.where(self.current_block.a_b_vector == 1)[1].reshape(self.batch_size, 2)
+        # # Use take_along_axis to gather elements from arr according to indices
+        # gathered = np.take_along_axis(two_hot_indices, self.optimal_agent.choose_action(), axis=1)
+        # # Since gathered will have shape (64, 1), you might want to flatten it to get a 1D array
+        # gathered = gathered.flatten()
+        # # Assume the maximum value in gathered is less than 10
+        # target = np.eye(self.output_dim)[gathered.astype(int)]  # This creates a one-hot encoded array of shape (64, 10)
+
+        target = self.optimal_agent.choose_action()
+        target_sequence.append(target)
+        target_sequence = np.stack(target_sequence, axis=1)
+
+        return target_sequence
+
+
+    def get_ground_truth_sequence(self):
+        """Generate target sequence containing: inaction, inaction, init port, good port"""
+        target_sequence = []
+
+        do_nothing = np.zeros((self.batch_size, self.output_dim))
+        do_nothing[:, -1] = 1
+        target_sequence.append(do_nothing)
+        target_sequence.append(do_nothing)
+
+        # initiation port choice
+        target = self.current_block.init_vector
+        target_sequence.append(target)
+
+        # Indices where values are 1 in two-hot matrix
+        two_hot_indices = np.where(self.current_block.a_b_vector == 1)[1].reshape(self.batch_size, 2)
+        # Use take_along_axis to gather elements from arr according to indices
+        gathered = np.take_along_axis(two_hot_indices, self.current_block.selected_two_hot_index, axis=1)
+        # Since gathered will have shape (64, 1), you might want to flatten it to get a 1D array
+        gathered = gathered.flatten()
+        # Assume the maximum value in gathered is less than 10
+        target = np.eye(self.output_dim)[gathered.astype(int)]  # This creates a one-hot encoded array of shape (64, 10)
+
+        target_sequence.append(target)
+        target_sequence = np.stack(target_sequence, axis=1)
+
+        return target_sequence
+
+
+    def step(self, model_output=None, ground_truth=None):
         """Set the reward for the next input based on model's output, and get next input."""
-        if model_output is not None and target is not None:
-            trial_stages_correct = np.argmax(model_output[:, -2:, :], axis=-1) == np.argmax(target[:, -2:, :], axis=-1)
+        if ground_truth is not None:
+            if self.config.use_rnn_actions:
+                trial_stages_correct = np.argmax(model_output[:, -2:, :], axis=-1) == np.argmax(ground_truth[:, -2:, :], axis=-1)
+                reward = np.all(trial_stages_correct, axis=-1)
+            else:
+                reward = np.argmax(self.optimal_agent.last_choice_onehot, axis=-1) == np.argmax(ground_truth[:, -1, :], axis=-1)
 
-            reward = np.all(trial_stages_correct, axis=-1)
+            self.optimal_agent.update_beliefs(reward, choice=model_output[:, -1, :] if self.config.use_rnn_actions else None)
 
             self.current_block.reward_vector[:, -1] = reward
             self.trials_since_reversal += 1
 
             self.check_and_switch_block()
 
-        return self.get_data_sequence(), self.get_target_sequence()
+        return self.get_data_sequence(), self.get_target_sequence(), self.get_ground_truth_sequence()
 
     def check_and_switch_block(self):
         """Check elapsed trials since reversal and reverse if required. After, check total number of reversals and switch block if required"""
         # get batch mask for reversals
         max_trials_since_reversal_criterion = self.trials_since_reversal >= self.max_trials_since_reversal_jittered
         reversal_mask = max_trials_since_reversal_criterion
+
+        if np.any(reversal_mask):
+            pass
         # reversal if criteria met
         self.current_block.reverse(reversal_mask)
         # subsequently reset counters
@@ -138,9 +200,12 @@ class DataCurriculum:
         noise = np.zeros((np.count_nonzero(reversal_mask),)) if self.jitter == 0 else np.random.randint(-self.jitter, self.jitter, (np.count_nonzero(reversal_mask),))
         self.max_trials_since_reversal_jittered[reversal_mask] = self.max_trials_since_reversal + noise
 
+
         # get batch mask for block switches (i.e. changing of the 3 relevant ports)
         switch_mask = np.logical_and(self.block_reversals % self.n_reversals == 0, self.block_reversals > 0)
         # switch if criteria met
         self.current_block.switch(switch_mask)
         # subsequently reset counters
         self.block_reversals[switch_mask] = 0
+        # reset bayes agent probabilities
+        self.optimal_agent.switch(switch_mask, self.current_block.a_b_vector)

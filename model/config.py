@@ -27,6 +27,7 @@ class Conf():
                    # (maybe if sample then RNN should receive action taken?)
     weight_init = False  # whether to use weight inits on RNN
     threshold = 5.0  # choose None to use vanilla RNN
+    use_rnn_actions = False
 
     # task params
     reward_prob = 1.0

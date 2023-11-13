@@ -25,7 +25,7 @@ def step(model, num_trials, logger=None):
     hidden = None
     loss = 0
     # Get the initial sequence for the epoch
-    next_input, next_target = data_curriculum.step()
+    next_input, next_target, ground_truth = data_curriculum.step()
 
     # Convert data to tensors
     data_tensor = torch.tensor(next_input, dtype=Conf.dtype, device=Conf.dev)
@@ -44,15 +44,15 @@ def step(model, num_trials, logger=None):
         
         # store data in logger for later computation of accuracies
         if logger is not None:
-            logger.log(logits.cpu().detach(), target_tensor.cpu().detach(), data_tensor.cpu().detach())
+            logger.log(logits.cpu().detach(), target_tensor.cpu().detach(), data_tensor.cpu().detach(), ground_truth)
 
         loss_trial = criterion(logits, target_tensor)
         loss += loss_trial
 
         # Prepare next input based on the output and target (computes if reward should be recieved, 
         # and also whether reversal or block switch occurs)
-        next_input, next_target = data_curriculum.step(choices.cpu().detach().numpy(), 
-                                                       target_tensor.cpu().detach().numpy())
+        next_input, next_target, ground_truth = data_curriculum.step(choices.cpu().detach().numpy(), 
+                                                          ground_truth)
 
         data_tensor = torch.tensor(next_input, dtype=Conf.dtype, device=Conf.dev)
         target_tensor = torch.tensor(next_target, dtype=Conf.dtype, device=Conf.dev)
