@@ -3,10 +3,14 @@ import numpy as np
 import pickle
 import os
 
+
 class LearningLogger:
-    def __init__(self, save_dir='./data/'):
+    def __init__(self, Conf):
         self.reset()
-        self.save_dir = save_dir
+        self.save_dir = Conf.save_dir
+
+        if not os.path.exists(self.save_dir):
+            os.makedirs(self.save_dir)
 
     def reset(self):
         self.accuracy_steps = 0
@@ -23,9 +27,9 @@ class LearningLogger:
 
         accuracy_all, accuracy_steps, accuracy_pair = compute_trial_accuracy(logits, targets, inputs)
 
-        self.accuracy_steps = ( self.accuracy_steps * (self.n_trials - 1) + accuracy_steps ) / self.n_trials
-        self.accuracy_all = ( self.accuracy_all * (self.n_trials - 1) + accuracy_all ) / self.n_trials
-        self.accuracy_pair = ( self.accuracy_pair * (self.n_trials - 1) + accuracy_pair ) / self.n_trials
+        self.accuracy_steps = (self.accuracy_steps * (self.n_trials - 1) + accuracy_steps) / self.n_trials
+        self.accuracy_all = (self.accuracy_all * (self.n_trials - 1) + accuracy_all) / self.n_trials
+        self.accuracy_pair = (self.accuracy_pair * (self.n_trials - 1) + accuracy_pair) / self.n_trials
 
         self.inputs_hist_buffer.append(inputs.numpy())
         self.targets_hist_buffer.append(targets.numpy())
@@ -37,14 +41,14 @@ class LearningLogger:
         self.inputs_hist = np.concatenate(self.inputs_hist_buffer, axis=1)
         self.targets_hist = np.concatenate(self.targets_hist_buffer, axis=1)
         self.choices_hist = np.concatenate(self.choices_hist_buffer, axis=1)
-        
+
         correct = np.argmax(self.choices_hist, axis=-1) == np.argmax(self.targets_hist, axis=-1)
 
         # reshape into (batch_size, num_trial, num_trial_steps)
-        correct = np.reshape(correct, (correct.shape[0], correct.shape[1]//4, 4))
+        correct = np.reshape(correct, (correct.shape[0], correct.shape[1] // 5, 5))
         correct_all = np.all(correct, axis=-1)
 
-        self.accuracy_steps = 100 * np.sum(correct, axis=(0,1)) / (correct.shape[0] * correct.shape[1])
+        self.accuracy_steps = 100 * np.sum(correct, axis=(0, 1)) / (correct.shape[0] * correct.shape[1])
         # acc_all = 100 * np.sum(correct_all, axis=(0,1)) / (correct_all.shape[0] * correct_all.shape[1])
         # acc_steps = []
         # for i in range(self.inputs_hist_buffer[0].shape[1]):
@@ -55,9 +59,10 @@ class LearningLogger:
         return self.accuracy_steps
 
     def print(self):
-        trial_stages = ['rew', 'delay', 'init', 'choice']
+        trial_stages = ['rew', 'delay', 'init', 'init', 'choice']
         print('Accuracy all steps:\t' + f'{self.accuracy_all:.1f}')
-        print('Accuracy each step:\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(self.accuracy_steps, trial_stages)]))
+        print(
+            'Accuracy each step:\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(self.accuracy_steps, trial_stages)]))
         print('Accuracy A or B:\t\t\t\t\t\t\t\t' + f'{self.accuracy_pair:.1f}')
 
     def save_data(self, fname='data'):
@@ -70,7 +75,7 @@ class LearningLogger:
                      'choices_hist': self.choices_hist,
                      'accuracy_steps': self.accuracy_steps}
 
-        np.savez(fname, self.inputs_hist, self.targets_hist, self.choices_hist, self.accuracy_steps)
+        np.savez(fpath, self.inputs_hist, self.targets_hist, self.choices_hist, self.accuracy_steps)
 
 
 def compute_trial_accuracy(logits, targets, inputs):
@@ -81,12 +86,9 @@ def compute_trial_accuracy(logits, targets, inputs):
     correct_all = torch.all(correct, axis=-1)
     acc_all = 100 * torch.sum(correct_all, dtype=torch.float32) / correct.shape[0]
 
-    one_hot_choice = torch.nn.functional.one_hot(torch.argmax(logits[:,-1,:], axis=-1), num_classes=logits.size(-1))
-    two_hot_choices = inputs[:,-1,:]
+    one_hot_choice = torch.nn.functional.one_hot(torch.argmax(logits[:, -1, :-1], axis=-1), num_classes=logits.size(-1))
+    two_hot_choices = inputs[:, -1, :-1]
     correct_pair = torch.sum(torch.logical_and(one_hot_choice, two_hot_choices), axis=-1)
     acc_pair = 100 * torch.sum(correct_pair, axis=0, dtype=torch.float32) / correct.shape[0]
 
     return acc_all, acc_step, acc_pair
-
-
-
