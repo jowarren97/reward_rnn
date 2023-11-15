@@ -3,27 +3,31 @@ from bayes import BayesAgent
 
 epsilon = 1e-8
 
+
 class Block:
-    def __init__(self, config, starting_rewards=0, init_vector=None, a_b_vector=None):
+    def __init__(self, config, starting_rewards=0, init_vector=None, a_b_vector=None, a_vector=None, b_vector=None):
         self.batch_size = config.batch_size
         self.input_dim = config.input_dim  # n_ports + 1 (reward input)
         self.output_dim = config.output_dim
         self.config = config
 
         self.reward_vector = np.zeros((self.batch_size, self.input_dim))
-        self.reward_vector[:, -1] = starting_rewards
+        self.reward_vector[:, -2] = starting_rewards
+        self.reward_vector[:, -1] = 1 - starting_rewards
 
         if init_vector is None or a_b_vector is None:
-            self.init_vector, self.a_b_vector = self.generate_new_port_layout()
+            self.init_vector, self.a_b_vector, self.a_vector, self.b_vector = self.generate_new_port_layout()
         else:
-            self.init_vector, self.a_b_vector = init_vector, a_b_vector
+            self.init_vector, self.a_b_vector, self.a_vector, self.b_vector = \
+                init_vector, a_b_vector, a_vector, b_vector
 
         # Fixed one-hot target based on two-hot input
-        self.selected_two_hot_index = np.random.choice([0, 1], size=(self.batch_size, 1))  # which port is currently good (A=0, B=1)
+        self.selected_two_hot_index = np.random.choice([0, 1], size=(
+            self.batch_size, 1))  # which port is currently good (A=0, B=1)
 
     def generate_new_port_layout(self):
         """Generate random one-hot and two-hot vectors for batches."""
-        all_indices = np.array([np.random.choice(self.input_dim - 1, size=3, replace=False)
+        all_indices = np.array([np.random.choice(self.config.port_dim, size=3, replace=False)
                                 for _ in range(self.batch_size)])  # choose 3 random ports for task (from 9 possible)
 
         init_vector = np.zeros((self.batch_size, self.input_dim))
@@ -33,7 +37,12 @@ class Block:
         a_b_vector[np.arange(self.batch_size), all_indices[:, 1]] = 1  # choice port
         a_b_vector[np.arange(self.batch_size), all_indices[:, 2]] = 1  # choice port
 
-        return init_vector, a_b_vector
+        a_vector = np.zeros((self.batch_size, self.input_dim))
+        b_vector = np.zeros((self.batch_size, self.input_dim))
+        a_vector[np.arange(self.batch_size), all_indices[:, 1]] = 1
+        b_vector[np.arange(self.batch_size), all_indices[:, 2]] = 1
+
+        return init_vector, a_b_vector, a_vector, b_vector
 
     def reverse(self, reversal_mask):
         """Reverse 'good' a or b port using a batch mask."""
@@ -42,16 +51,19 @@ class Block:
 
     def switch(self, switch_mask):
         """Switch blocks (i.e. the 3 active ports) using a batch mask."""
-        init_vector_new, a_b_vector_new = self.generate_new_port_layout()
+        init_vector_new, a_b_vector_new, a_vector_new, b_vector_new = self.generate_new_port_layout()
 
         switch_mask = switch_mask[:, np.newaxis]
         self.init_vector = np.where(switch_mask, init_vector_new, self.init_vector)
         self.a_b_vector = np.where(switch_mask, a_b_vector_new, self.a_b_vector)
+        self.a_vector = np.where(switch_mask, a_vector_new, self.a_vector)
+        self.b_vector = np.where(switch_mask, b_vector_new, self.b_vector)
 
     def get_data_sequence(self):
         """Generate an input sequence as per the block definition."""
         zero_vector = np.zeros((self.batch_size, self.input_dim))
-        sequence = np.stack([self.reward_vector, zero_vector, self.init_vector, self.a_b_vector], axis=1)
+        # sequence = np.stack([self.reward_vector, zero_vector, self.init_vector, self.a_b_vector], axis=1)
+        sequence = np.stack([self.reward_vector, zero_vector, self.init_vector, self.a_vector, self.b_vector], axis=1)
         return sequence
 
     def get_target_sequence(self):
@@ -64,8 +76,9 @@ class Block:
         target_sequence.append(do_nothing)
 
         # initiation port choice
-        target = self.init_vector
+        target = self.init_vector[:, :-1]
         target_sequence.append(target)
+        target_sequence.append(target)  # make this longer
 
         # Indices where values are 1 in two-hot matrix
         two_hot_indices = np.where(self.a_b_vector == 1)[1].reshape(self.batch_size, 2)
@@ -85,7 +98,7 @@ class Block:
 class DataCurriculum:
     def __init__(self, config):
         self.input_dim = config.input_dim
-        self.output_dim = config.input_dim
+        self.output_dim = config.output_dim
         self.reward_prob = config.reward_prob
         self.batch_size = config.batch_size
         self.config = config
@@ -100,7 +113,8 @@ class DataCurriculum:
         self.jitter = config.jitter
         self.max_trials_since_reversal = config.max_trials_since_reversal
 
-        noise = np.zeros((self.batch_size,)) if self.jitter == 0 else np.random.randint(-self.jitter, self.jitter, (self.batch_size,))
+        noise = np.zeros((self.batch_size,)) if self.jitter == 0 else np.random.randint(-self.jitter, self.jitter + 1,
+                                                                                        (self.batch_size,))
         # thresholds for reversals and block switches
         self.max_trials_since_reversal_jittered = self.max_trials_since_reversal + noise
         self.n_reversals = config.n_reversals
@@ -119,8 +133,9 @@ class DataCurriculum:
         target_sequence.append(do_nothing)
 
         # initiation port choice
-        target = self.current_block.init_vector
+        target = self.current_block.init_vector[:, :self.output_dim]
         target_sequence.append(target)
+        target_sequence.append(target)  # make this longer
 
         # # Indices where values are 1 in two-hot matrix
         # two_hot_indices = np.where(self.current_block.a_b_vector == 1)[1].reshape(self.batch_size, 2)
@@ -133,6 +148,9 @@ class DataCurriculum:
 
         target = self.optimal_agent.choose_action()
         target_sequence.append(target)
+
+        assert len(target_sequence) == self.config.trial_len
+
         target_sequence = np.stack(target_sequence, axis=1)
 
         return target_sequence
@@ -148,8 +166,9 @@ class DataCurriculum:
         target_sequence.append(do_nothing)
 
         # initiation port choice
-        target = self.current_block.init_vector
+        target = self.current_block.init_vector[:, :self.output_dim]
         target_sequence.append(target)
+        target_sequence.append(target)  # make this longer
 
         # Indices where values are 1 in two-hot matrix
         two_hot_indices = np.where(self.current_block.a_b_vector == 1)[1].reshape(self.batch_size, 2)
@@ -161,6 +180,9 @@ class DataCurriculum:
         target = np.eye(self.output_dim)[gathered.astype(int)]  # This creates a one-hot encoded array of shape (64, 10)
 
         target_sequence.append(target)
+
+        assert len(target_sequence) == self.config.trial_len
+        
         target_sequence = np.stack(target_sequence, axis=1)
 
         return target_sequence
@@ -170,7 +192,7 @@ class DataCurriculum:
         """Set the reward for the next input based on model's output, and get next input."""
         if ground_truth is not None:
             if self.config.use_rnn_actions:
-                trial_stages_correct = np.argmax(model_output[:, -2:, :], axis=-1) == np.argmax(ground_truth[:, -2:, :], axis=-1)
+                trial_stages_correct = np.argmax(model_output[:, -1:, :], axis=-1) == np.argmax(ground_truth[:, -1:, :], axis=-1)
                 trial_correct = np.all(trial_stages_correct, axis=-1)
             else:
                 trial_correct = np.argmax(self.optimal_agent.last_choice_onehot, axis=-1) == np.argmax(ground_truth[:, -1, :], axis=-1)
@@ -180,7 +202,9 @@ class DataCurriculum:
             # reward_probabilistic = reward
             self.optimal_agent.update_beliefs(reward_probabilistic, choice=model_output[:, -1, :] if self.config.use_rnn_actions else None)
 
-            self.current_block.reward_vector[:, -1] = reward_probabilistic
+            self.current_block.reward_vector[:, -2] = reward_probabilistic
+            self.current_block.reward_vector[:, -1] = 1 - reward_probabilistic
+
             self.trials_since_reversal += 1
 
             self.check_and_switch_block()
@@ -200,7 +224,10 @@ class DataCurriculum:
         # subsequently reset counters
         self.block_reversals[reversal_mask] += 1
         self.trials_since_reversal[reversal_mask] = 0
-        noise = np.zeros((np.count_nonzero(reversal_mask),)) if self.jitter == 0 else np.random.randint(-self.jitter, self.jitter, (np.count_nonzero(reversal_mask),))
+        noise = np.zeros((np.count_nonzero(reversal_mask),)) if self.jitter == 0 else np.random.randint(-self.jitter,
+                                                                                                        self.jitter, (
+                                                                                                            np.count_nonzero(
+                                                                                                                reversal_mask),))
         self.max_trials_since_reversal_jittered[reversal_mask] = self.max_trials_since_reversal + noise
 
 

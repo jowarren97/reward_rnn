@@ -17,8 +17,9 @@ model = SimpleRNN(Conf)
 data_curriculum = DataCurriculum(Conf)
 logger = LearningLogger(Conf)
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr = Conf.lr)
+optimizer = torch.optim.Adam(model.parameters(), lr=Conf.lr)
 epoch_time = 0
+
 
 def step(model, num_trials, logger=None):
     """Do one epoch."""
@@ -41,12 +42,12 @@ def step(model, num_trials, logger=None):
             choices = torch.nn.functional.one_hot(dist.sample(), num_classes=Conf.input_dim)
         else:
             choices = logits
-        
+
         # store data in logger for later computation of accuracies
         if logger is not None:
             logger.log(logits.cpu().detach(), target_tensor.cpu().detach(), data_tensor.cpu().detach(), ground_truth)
 
-        loss_trial = criterion(logits, target_tensor)
+        loss_trial = criterion(logits[:, -1, :], target_tensor[:, -1, :])
         loss += loss_trial
 
         # Prepare next input based on the output and target (computes if reward should be recieved, 
@@ -59,6 +60,7 @@ def step(model, num_trials, logger=None):
     
     return loss
 
+
 for epoch in range(Conf.num_epochs):
     # empty logger data, put model in train mode, reset optimizer
     logger.reset()
@@ -67,14 +69,15 @@ for epoch in range(Conf.num_epochs):
 
     start = time()
     loss = step(model, Conf.num_trials, logger)
-
+    forward_time = time() - start
     if not debug:
         # Backward pass and optimization
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0, norm_type=2)
         optimizer.step()
 
     end = time()
+    backward_time = end - (start + forward_time)
     epoch_time = (end - start) if epoch == 0 else epoch_time + (end - start) / Conf.print_loss_interval
 
     # Print loss
@@ -86,11 +89,13 @@ for epoch in range(Conf.num_epochs):
             step(model, Conf.num_trials_test, logger)
 
         print(f"\nEpoch [{epoch}/{Conf.num_epochs}]")
-        print(f"Time:\t\t\t{epoch_time:.2f}s")
+        print(f"Time:\t\t\t{epoch_time:.4f}s")
+        print(f"F-Time:\t\t\t{forward_time:.4f}s")
+        print(f"B-Time:\t\t\t{backward_time:.4f}s")
         print(f"Loss:\t\t\t{loss.item():.4f}")
         logger.get_data()
         logger.print()
         epoch_time = 0
 
         if epoch % Conf.save_data_interval == 0:
-            logger.save_data(fname = 'data_' + str(epoch))
+            logger.save_data(fname='data_' + str(epoch))
