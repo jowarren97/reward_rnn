@@ -8,6 +8,7 @@ class LearningLogger:
     def __init__(self, Conf):
         self.reset()
         self.save_dir = Conf.save_dir
+        self.config = Conf
 
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
@@ -31,7 +32,7 @@ class LearningLogger:
         self.n_trials += 1
 
         if logits is not None:
-            accuracy_all, accuracy_steps, accuracy_pair = compute_trial_accuracy(logits, targets, inputs)
+            accuracy_all, accuracy_steps, accuracy_pair = self.compute_trial_accuracy(logits, targets, inputs)
 
             self.accuracy_steps = ( self.accuracy_steps * (self.n_trials - 1) + accuracy_steps ) / self.n_trials
             self.accuracy_all = ( self.accuracy_all * (self.n_trials - 1) + accuracy_all ) / self.n_trials
@@ -92,17 +93,18 @@ class LearningLogger:
         np.savez(fpath, self.inputs_hist, self.targets_hist, self.choices_hist, self.ground_truth_hist, self.accuracy_steps)
 
 
-def compute_trial_accuracy(logits, targets, inputs):
-    correct = torch.argmax(logits, axis=-1) == torch.argmax(targets, axis=-1)
+    def compute_trial_accuracy(self, logits, targets, inputs):
+        # correct = torch.argmax(logits, axis=-1) == torch.argmax(targets, axis=-1)
 
-    acc_step = 100 * torch.sum(correct, axis=0, dtype=torch.float32) / correct.shape[0]
+        # acc_step = 100 * torch.sum(correct, axis=0, dtype=torch.float32) / correct.shape[0]
 
-    correct_all = torch.all(correct, axis=-1)
-    acc_all = 100 * torch.sum(correct_all, dtype=torch.float32) / correct.shape[0]
+        # correct_all = torch.all(correct, axis=-1)
+        # acc_all = 100 * torch.sum(correct_all, dtype=torch.float32) / correct.shape[0]
 
-    one_hot_choice = torch.nn.functional.one_hot(torch.argmax(logits[:, -1, :-1], axis=-1), num_classes=logits.size(-1))
-    two_hot_choices = inputs[:, -1, :-1]
-    correct_pair = torch.sum(torch.logical_and(one_hot_choice, two_hot_choices), axis=-1)
-    acc_pair = 100 * torch.sum(correct_pair, axis=0, dtype=torch.float32) / correct.shape[0]
+        # one_hot_choice = torch.nn.functional.one_hot(torch.argmax(logits[:, -1, :-1], axis=-1), num_classes=logits.size(-1))
+        # two_hot_choices = inputs[:, -1, :-self.config.output_dim]
+        # correct_pair = torch.sum(torch.logical_and(one_hot_choice, two_hot_choices), axis=-1)
+        # acc_pair = 100 * torch.sum(correct_pair, axis=0, dtype=torch.float32) / correct.shape[0]
 
-    return acc_all, acc_step, acc_pair
+        # return acc_all, acc_step, acc_pair
+        return np.nan, np.nan, np.nan

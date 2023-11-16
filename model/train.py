@@ -1,3 +1,13 @@
+"""
+- function to move between A/B binary and one-hot representations
+- mechanism to remove block switching (time with epoch starts only)
+- general formulation of rnn: one for standard, one for groupRNN
+- better logger
+- curriculum class, maybe do in tensors not numpy?
+- in curriculum, make action, state, reward formulation more clean and explicit
+- held out layouts
+"""
+
 from curriculum import DataCurriculum
 from model import SimpleRNN
 import torch.nn as nn
@@ -47,7 +57,12 @@ def step(model, num_trials, logger=None):
         if logger is not None:
             logger.log(logits.cpu().detach(), target_tensor.cpu().detach(), data_tensor.cpu().detach(), ground_truth)
 
-        loss_trial = criterion(logits[:, -1, :], target_tensor[:, -1, :])
+        # loss_trial = criterion(logits[:, -1, :], target_tensor[:, -1, :])
+
+        logits_ = torch.transpose(logits, 1, 2)
+        targets_ = torch.transpose(target_tensor, 1, 2)
+        # loss_trial = criterion(logits_[:, :, -2:], targets_[:, :, -2:])
+        loss_trial = criterion(logits_, targets_)
         loss += loss_trial
 
         # Prepare next input based on the output and target (computes if reward should be recieved, 

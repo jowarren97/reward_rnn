@@ -23,9 +23,10 @@ class Conf():
 
     # network params
     port_dim = 9
-    input_dim = port_dim + 2  # onehot: 9 port lights, 1 reward input
-    hidden_dim = 256
+    state_dim = port_dim + 2
     output_dim = port_dim + 1  # onehot: 9 port choices, 1 do-nothing choice
+    input_dim = state_dim + output_dim  # onehot: 9 port lights, 1 reward input
+    hidden_dim = 256
 
     # experimental stuff
     sample = False  # whether to sample action from RNN logits, or take max logit as action 
@@ -35,7 +36,7 @@ class Conf():
     use_rnn_actions = False
 
     # task params
-    reward_prob = 1.0
+    reward_prob = 0.8
     n_reversals = 10
     max_trials_since_reversal = 8
     p_switch = 1/max_trials_since_reversal
