@@ -23,7 +23,9 @@ def init_weights_rnn(rnn):
         # print(param.data)
         #     nn.init.xavier_uniform_(param.data)
         if 'weight_hh' in name:  # Hidden-to-hidden weights
-            nn.init.eye_(param.data) + torch.normal(torch.zeros_like(param.data), 0.01, dtype=Conf.dtype, device=Conf.dev)
+            # nn.init.eye_(param.data) + torch.normal(torch.zeros_like(param.data), 0.01, dtype=Conf.dtype, device=Conf.dev)
+            nn.init.trunc_normal_(param.data, mean=0.0, std=0.001)
+
         # elif 'bias' in name:
         #     param.data.zero_()
 
@@ -97,7 +99,7 @@ class SimpleRNN(nn.Module):
         rnn_out, hidden = self.rnn(x, hidden)
         output = self.linear(rnn_out)
 
-        return output, hidden
+        return output, hidden, rnn_out
 
 # class SimpleRNN(nn.Module):
 #     def __init__(self, input_size, hidden_size, output_size, num_layers=1, device=Conf.dev):

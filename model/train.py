@@ -45,7 +45,7 @@ def step(model, num_trials, logger=None):
     for trial in range(num_trials):
         """Loop through trials (chunks of 4 timesteps)."""
         # Forward pass
-        logits, hidden = model(data_tensor, hidden)
+        logits, hidden, hiddens = model(data_tensor, hidden)
 
         if Conf.sample:
             dist = torch.distributions.categorical.Categorical(logits=logits)
@@ -55,7 +55,8 @@ def step(model, num_trials, logger=None):
 
         # store data in logger for later computation of accuracies
         if logger is not None:
-            logger.log(logits.cpu().detach(), target_tensor.cpu().detach(), data_tensor.cpu().detach(), ground_truth, data_curriculum.optimal_agent.p_A_high)
+            logger.log(logits.cpu().detach(), target_tensor.cpu().detach(), data_tensor.cpu().detach(), 
+                       ground_truth, data_curriculum.optimal_agent.p_A_high, hiddens.cpu().detach())
 
         # loss_trial = criterion(logits[:, -1, :], target_tensor[:, -1, :])
 
@@ -116,6 +117,9 @@ for epoch in range(Conf.num_epochs):
         logger.get_data()
         logger.print()
         epoch_time = 0
+
+        # data_curriculum.reset(train=True)
+        # check_train_test_split(data_curriculum, train=True)
 
         # data_curriculum.reset(train=True)
 
