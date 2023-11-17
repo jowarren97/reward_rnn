@@ -27,8 +27,9 @@ class LearningLogger:
         self.inputs_hist_buffer = []
         self.choices_hist_buffer = []
         self.ground_truth_hist_buffer = []
+        self.p_A_high_hist_buffer = []
 
-    def log(self, logits=None, targets=None, inputs=None, ground_truth=None):
+    def log(self, logits=None, targets=None, inputs=None, ground_truth=None, p_A_high=None):
         self.n_trials += 1
 
         if logits is not None:
@@ -45,6 +46,8 @@ class LearningLogger:
             self.targets_hist_buffer.append(targets.numpy())
         if ground_truth is not None:
             self.ground_truth_hist_buffer.append(ground_truth)
+        if p_A_high is not None:
+            self.p_A_high_hist_buffer.append(p_A_high)
 
         # self.choices.append()
 
@@ -52,6 +55,7 @@ class LearningLogger:
         self.inputs_hist = np.concatenate(self.inputs_hist_buffer, axis=1)
         self.targets_hist = np.concatenate(self.targets_hist_buffer, axis=1)
         self.ground_truth_hist = np.concatenate(self.ground_truth_hist_buffer, axis=1)
+        self.p_A_hist = np.concatenate(self.p_A_high_hist_buffer, axis=1)
         
         if len(self.choices_hist_buffer):
             self.choices_hist = np.concatenate(self.choices_hist_buffer, axis=1)
@@ -88,9 +92,10 @@ class LearningLogger:
                      'targets_hist': self.targets_hist,
                      'choices_hist': self.choices_hist,
                      'ground_truth': self.ground_truth_hist,
+                     'p_A_hist': self.p_A_hist,
                      'accuracy_steps': self.accuracy_steps}
 
-        np.savez(fpath, self.inputs_hist, self.targets_hist, self.choices_hist, self.ground_truth_hist, self.accuracy_steps)
+        np.savez(fpath, self.inputs_hist, self.targets_hist, self.choices_hist, self.ground_truth_hist, self.p_A_hist, self.accuracy_steps)
 
 
     def compute_trial_accuracy(self, logits, targets, inputs):

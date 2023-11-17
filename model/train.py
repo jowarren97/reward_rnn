@@ -55,7 +55,7 @@ def step(model, num_trials, logger=None):
 
         # store data in logger for later computation of accuracies
         if logger is not None:
-            logger.log(logits.cpu().detach(), target_tensor.cpu().detach(), data_tensor.cpu().detach(), ground_truth)
+            logger.log(logits.cpu().detach(), target_tensor.cpu().detach(), data_tensor.cpu().detach(), ground_truth, data_curriculum.optimal_agent.p_A_high)
 
         # loss_trial = criterion(logits[:, -1, :], target_tensor[:, -1, :])
 
