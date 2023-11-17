@@ -37,10 +37,10 @@ class Conf():
 
     # task params
     reward_prob = 0.8
-    n_reversals = 10
-    max_trials_since_reversal = 8
+    n_reversals = 1000
+    max_trials_since_reversal = 10
     p_switch = 1/max_trials_since_reversal
-    jitter = 1  # jitter in reward probability
+    jitter = 2  # jitter in reward probability
 
     # data output params
     print_loss_interval = 50

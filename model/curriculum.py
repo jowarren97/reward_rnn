@@ -14,6 +14,8 @@ class Block:
         self.output_dim = config.output_dim
         self.state_dim = config.state_dim
         self.config = config
+        self.train = True
+        self.train_layouts, self.test_layouts = train_test_split(port_dim=config.port_dim, train_ratio=0.8)
 
         self.reward_vector = np.zeros((self.batch_size, self.state_dim))
         self.reward_vector[:, -2] = starting_rewards
@@ -30,23 +32,33 @@ class Block:
             self.batch_size, 1))  # which port is currently good (A=0, B=1)
 
     def generate_new_port_layout(self):
+
         """Generate random one-hot and two-hot vectors for batches."""
-        all_indices = np.array([np.random.choice(self.config.port_dim, size=3, replace=False)
-                                for _ in range(self.batch_size)])  # choose 3 random ports for task (from 9 possible)
+        max_idx = len(self.train_layouts) if self.train else len(self.test_layouts)
+        idxs = np.random.choice(max_idx, size=self.batch_size)
+        perms = self.train_layouts[idxs] if self.train else self.test_layouts[idxs]
 
-        init_vector = np.zeros((self.batch_size, self.state_dim))
-        init_vector[np.arange(self.batch_size), all_indices[:, 0]] = 1  # initiation port
+        return perm_to_port_vectors(perms, self.state_dim)
 
-        a_b_vector = np.zeros((self.batch_size, self.state_dim))
-        a_b_vector[np.arange(self.batch_size), all_indices[:, 1]] = 1  # choice port
-        a_b_vector[np.arange(self.batch_size), all_indices[:, 2]] = 1  # choice port
+        # all_indices = np.array([np.random.choice(self.config.port_dim, size=3, replace=False)
+        #                         for _ in range(self.batch_size)])  # choose 3 random ports for task (from 9 possible)
 
-        a_vector = np.zeros((self.batch_size, self.state_dim))
-        b_vector = np.zeros((self.batch_size, self.state_dim))
-        a_vector[np.arange(self.batch_size), all_indices[:, 1]] = 1
-        b_vector[np.arange(self.batch_size), all_indices[:, 2]] = 1
+        # init_vector = np.zeros((self.batch_size, self.state_dim))
+        # init_vector[np.arange(self.batch_size), all_indices[:, 0]] = 1  # initiation port
 
-        return init_vector, a_b_vector, a_vector, b_vector
+        # a_b_vector = np.zeros((self.batch_size, self.state_dim))
+        # a_b_vector[np.arange(self.batch_size), all_indices[:, 1]] = 1  # choice port
+        # a_b_vector[np.arange(self.batch_size), all_indices[:, 2]] = 1  # choice port
+
+        # a_vector = np.zeros((self.batch_size, self.state_dim))
+        # b_vector = np.zeros((self.batch_size, self.state_dim))
+        # a_vector[np.arange(self.batch_size), all_indices[:, 1]] = 1
+        # b_vector[np.arange(self.batch_size), all_indices[:, 2]] = 1
+        # return init_vector, a_b_vector, a_vector, b_vector
+    
+    def reset(self, train):
+        self.train = train
+        self.init_vector, self.a_b_vector, self.a_vector, self.b_vector = self.generate_new_port_layout()
 
     def reverse(self, reversal_mask):
         """Reverse 'good' a or b port using a batch mask."""
@@ -134,6 +146,15 @@ class DataCurriculum:
         self.max_trials_since_reversal_jittered = self.max_trials_since_reversal + noise
         self.n_reversals = config.n_reversals
 
+    def reset(self, train):
+        self.current_block.reset(train)
+
+        self.trials_since_reversal[:] = 0
+        self.block_reversals[:] = 0
+        noise = np.random.randint(-self.jitter, self.jitter, self.batch_size,)
+        self.max_trials_since_reversal_jittered[:] = self.max_trials_since_reversal + noise
+        self.optimal_agent.switch(np.ones((self.batch_size,)), self.current_block.a_b_vector)
+
     def get_data_sequence(self, action):
         """Get a data sequence based on the current block."""
         return self.current_block.get_data_sequence(action)
@@ -161,7 +182,8 @@ class DataCurriculum:
         # gathered = gathered.flatten()
         # # Assume the maximum value in gathered is less than 10
         # target = np.eye(self.output_dim)[gathered.astype(int)]  # This creates a one-hot encoded array of shape (64, 10)
-
+        if any(np.sum(self.current_block.a_b_vector, axis=-1)==1):
+            pass
         target = self.optimal_agent.choose_action()
         target_sequence.append(target)
 
@@ -249,7 +271,6 @@ class DataCurriculum:
                                                                                                                 reversal_mask),))
         self.max_trials_since_reversal_jittered[reversal_mask] = self.max_trials_since_reversal + noise
 
-
         # get batch mask for block switches (i.e. changing of the 3 relevant ports)
         switch_mask = np.logical_and(self.block_reversals % self.n_reversals == 0, self.block_reversals > 0)
         # switch if criteria met
@@ -306,5 +327,59 @@ def train_test_split(port_dim=9, train_ratio=0.8):
 
     assert not any([bool(k_test == k_train) for k_test in test_keys for k_train in train_keys])
 
-    return train, test
+    return np.array(train), np.array(test)
+
+
+def perm_to_port_vectors(perms, state_dim):
+    perm_mat = np.array(perms)
+    batch_size = perm_mat.shape[0]
+
+    init_vector = np.zeros((batch_size, state_dim))
+    init_vector[np.arange(batch_size), perm_mat[:, 0]] = 1  # initiation port
+
+    a_vector = np.zeros((batch_size, state_dim))
+    a_vector[np.arange(batch_size), perm_mat[:, 1]] = 1  # initiation port
+
+    b_vector = np.zeros((batch_size, state_dim))
+    b_vector[np.arange(batch_size), perm_mat[:, 2]] = 1  # initiation port
+
+    a_b_vector = np.zeros((batch_size, state_dim))
+    a_b_vector[np.arange(batch_size), perm_mat[:, 1]] = 1  # initiation port
+    a_b_vector[np.arange(batch_size), perm_mat[:, 2]] = 1  # initiation port
+
+    if np.any(np.sum(a_b_vector, axis=-1)==1):
+        pass
+
+    return init_vector, a_b_vector, a_vector, b_vector
+
+
+def port_vectors_to_perm(init_vector, a_vector, b_vector):
+    batch_size = init_vector.shape[0]
+
+    # Initialize the permutation matrix
+    perm_mat = np.zeros((batch_size, 3), dtype=int)
+
+    # Loop over each example in the batch
+    for i in range(batch_size):
+        # Find the indices where each vector is 1
+        init_idx = np.where(init_vector[i] == 1)[0][0]
+        a_idx = np.where(a_vector[i] == 1)[0][0]
+        b_idx = np.where(b_vector[i] == 1)[0][0]
+
+        # Construct the permutation
+        perm_mat[i, 0] = init_idx
+        perm_mat[i, 1] = a_idx
+        perm_mat[i, 2] = b_idx
+
+    return perm_mat
+
+
+def check_train_test_split(curriculum, train):
+    perms = port_vectors_to_perm(curriculum.current_block.init_vector, curriculum.current_block.a_vector, curriculum.current_block.b_vector)
+    if train:
+        assert not any([p in curriculum.current_block.test_layouts.tolist() for p in perms.tolist()])
+        assert all([p in curriculum.current_block.train_layouts.tolist() for p in perms.tolist()])
+    else:
+        assert not any([p in curriculum.current_block.train_layouts.tolist() for p in perms.tolist()])
+        assert all([p in curriculum.current_block.test_layouts.tolist() for p in perms.tolist()])
 

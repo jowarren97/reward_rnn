@@ -8,7 +8,7 @@
 - held out layouts
 """
 
-from curriculum import DataCurriculum
+from curriculum import DataCurriculum, check_train_test_split
 from model import SimpleRNN
 import torch.nn as nn
 import torch
@@ -78,6 +78,9 @@ def step(model, num_trials, logger=None):
 
 for epoch in range(Conf.num_epochs):
     # empty logger data, put model in train mode, reset optimizer
+    data_curriculum.reset(train=True)
+    check_train_test_split(data_curriculum, train=True)
+
     logger.reset()
     model.train()
     optimizer.zero_grad()
@@ -99,6 +102,8 @@ for epoch in range(Conf.num_epochs):
     if epoch % Conf.print_loss_interval == 0:
         model.eval()
         logger.reset()
+        data_curriculum.reset(train=False)
+        check_train_test_split(data_curriculum, train=False)
 
         with torch.no_grad():
             step(model, Conf.num_trials_test, logger)
@@ -111,6 +116,8 @@ for epoch in range(Conf.num_epochs):
         logger.get_data()
         logger.print()
         epoch_time = 0
+
+        # data_curriculum.reset(train=True)
 
         if epoch % Conf.save_data_interval == 0:
             logger.save_data(fname='data_' + str(epoch))
