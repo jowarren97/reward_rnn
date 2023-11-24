@@ -65,12 +65,12 @@ def step(model, num_trials, logger=None):
 
 model.eval()
 
-for i in range(3):
+for i in range(Conf.num_epochs_test):
     data_curriculum.reset(train=False)
     logger.reset()
     step(model, num_trials=Conf.num_trials_test, logger=logger)
     logger.get_data()
-    logger.save_data(fname='data_all')
+    logger.save_data(fname=f'data_all_{i}')
     logger.print()
 
 # logger.save_data(fname='data_all')

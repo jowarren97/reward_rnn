@@ -19,6 +19,7 @@ class Conf():
     trial_len = 5
     num_trials = 50  # per epoch; timesteps = num_trials * 4  (reward, delay, init, choice)
     num_trials_test = 1000
+    num_epochs_test = 10
     batch_size = 64
 
     # network params

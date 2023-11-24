@@ -145,7 +145,7 @@ class LearningLogger:
         #              'accuracy_steps': self.accuracy_steps}
 
         start = time()
-        # np.savez_compressed(fpath, self.inputs_hist.astype(bool), self.targets_hist.astype(bool), self.choices_hist, self.ground_truth_hist.astype(bool), self.p_A_hist, self.hidden_hist, self.accuracy_steps)
+        # np.savez(fpath, self.inputs_hist.astype(bool), self.targets_hist.astype(bool), self.choices_hist, self.ground_truth_hist.astype(bool), self.p_A_hist, self.hidden_hist, self.accuracy_steps)
         end = time()
         print(f'np save time: {end - start:.1f}')
         return
