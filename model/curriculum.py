@@ -8,14 +8,15 @@ epsilon = 1e-8
 
 
 class Block:
-    def __init__(self, config, starting_rewards=0, init_vector=None, a_b_vector=None, a_vector=None, b_vector=None):
+    def __init__(self, config, starting_rewards=0, init_vector=None, a_b_vector=None, a_vector=None, b_vector=None, eval=False):
         self.batch_size = config.batch_size
         self.input_dim = config.input_dim  # n_ports + 1 (reward input)
         self.output_dim = config.output_dim
         self.state_dim = config.state_dim
         self.config = config
         self.train = True
-        self.train_layouts, self.test_layouts = train_test_split(port_dim=config.port_dim, train_ratio=0.8)
+        self.eval = eval
+        self.train_layouts, self.test_layouts, self.all_layouts = train_test_split(port_dim=config.port_dim, train_ratio=0.8)
 
         self.reward_vector = np.zeros((self.batch_size, self.state_dim))
         self.reward_vector[:, -2] = starting_rewards
@@ -34,9 +35,13 @@ class Block:
     def generate_new_port_layout(self):
 
         """Generate random one-hot and two-hot vectors for batches."""
-        max_idx = len(self.train_layouts) if self.train else len(self.test_layouts)
-        idxs = np.random.choice(max_idx, size=self.batch_size)
-        perms = self.train_layouts[idxs] if self.train else self.test_layouts[idxs]
+        if self.eval:
+            assert self.batch_size == len(self.all_layouts)
+            perms = self.all_layouts
+        else:
+            max_idx = len(self.train_layouts) if self.train else len(self.test_layouts)
+            idxs = np.random.choice(max_idx, size=self.batch_size)
+            perms = self.train_layouts[idxs] if self.train else self.test_layouts[idxs]
 
         return perm_to_port_vectors(perms, self.state_dim)
 
@@ -123,15 +128,15 @@ class Block:
 
 
 class DataCurriculum:
-    def __init__(self, config):
+    def __init__(self, config, eval=False):
         self.input_dim = config.input_dim
         self.output_dim = config.output_dim
         self.reward_prob = config.reward_prob
         self.batch_size = config.batch_size
         self.config = config
 
-        self.current_block = Block(config)
-        self.optimal_agent = BayesAgent(config, self.current_block.a_b_vector)
+        self.current_block = Block(config, eval=eval)
+        self.optimal_agent = BayesAgent(config, self.current_block.a_vector, self.current_block.b_vector)
 
         # counters for reversals and block switches
         self.trials_since_reversal = np.zeros(self.batch_size)
@@ -153,7 +158,7 @@ class DataCurriculum:
         self.block_reversals[:] = 0
         noise = np.random.randint(-self.jitter, self.jitter, self.batch_size,)
         self.max_trials_since_reversal_jittered[:] = self.max_trials_since_reversal + noise
-        self.optimal_agent.switch(np.ones((self.batch_size,)), self.current_block.a_b_vector)
+        self.optimal_agent.switch(np.ones((self.batch_size,)), self.current_block.a_vector, self.current_block.b_vector)
 
     def get_data_sequence(self, action):
         """Get a data sequence based on the current block."""
@@ -182,8 +187,7 @@ class DataCurriculum:
         # gathered = gathered.flatten()
         # # Assume the maximum value in gathered is less than 10
         # target = np.eye(self.output_dim)[gathered.astype(int)]  # This creates a one-hot encoded array of shape (64, 10)
-        if any(np.sum(self.current_block.a_b_vector, axis=-1)==1):
-            pass
+
         target = self.optimal_agent.choose_action()
         target_sequence.append(target)
 
@@ -278,22 +282,24 @@ class DataCurriculum:
         # subsequently reset counters
         self.block_reversals[switch_mask] = 0
         # reset bayes agent probabilities
-        self.optimal_agent.switch(switch_mask, self.current_block.a_b_vector)
+        self.optimal_agent.switch(switch_mask, self.current_block.a_vector, self.current_block.b_vector)
 
 
 def generate_permutation_sets(port_dim):
     # Generate all permutations
-    perms = list(permutations(range(port_dim), 3))
+    perms = permutations(range(port_dim), 3)
 
     # Dictionaries for initiation port sets and choice port sets
     # init_port_sets = {i: set() for i in range(port_dim)}
-    choice_port_sets = {frozenset([i, j]): set() for i in range(port_dim) for j in range(port_dim) if i != j}
+    # choice_port_sets = {frozenset([i, j]): set() for i in range(port_dim) for j in range(port_dim) if i != j}
+    choice_port_sets = {frozenset([i, j]): [] for i in range(port_dim) for j in range(port_dim) if i != j}
 
     # Populate the sets
     for perm in perms:
         x, y, z = perm
         # init_port_sets[x].add(perm)
-        choice_port_sets[frozenset([y, z])].add(perm)
+        # choice_port_sets[frozenset([y, z])].add(perm)
+        choice_port_sets[frozenset([y, z])].append(perm)
 
     return choice_port_sets
 
@@ -303,10 +309,15 @@ def train_test_split(port_dim=9, train_ratio=0.8):
     reduced_dict = copy(new_dict)
 
     n_layouts = len(new_dict)
-    train, test, train_keys, test_keys = [], [], [], []
+    train, test, all_perms, train_keys, test_keys = [], [], [], [], []
     n_overlap = 0
     
     keys_list = list(new_dict.keys())
+
+    for key in keys_list:
+        val = new_dict[key]
+        # print(key, val)
+        all_perms.append(val)
     shuffle(keys_list)
 
     while len(test) < n_layouts * (1 - train_ratio):
@@ -324,10 +335,13 @@ def train_test_split(port_dim=9, train_ratio=0.8):
     train = [list(val) for val in reduced_dict.values()]
     train = [item for sublist in train for item in sublist]
     test = [item for sublist in test for item in sublist]
+    all_perms = [item for sublist in all_perms for item in sublist]
 
     assert not any([bool(k_test == k_train) for k_test in test_keys for k_train in train_keys])
 
-    return np.array(train), np.array(test)
+    all_perms = np.array([p for p in permutations(range(port_dim), 3)])
+
+    return np.array(train), np.array(test), np.array(all_perms)
 
 
 def perm_to_port_vectors(perms, state_dim):

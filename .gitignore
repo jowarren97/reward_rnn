@@ -1,8 +1,13 @@
 data_share
 media
 *.npz
+*.pth
 *.pyc
 *.xml
+*.pdf
+*.png
+*.h5
+*.pkl
 requirements.txt
 *.code-workspace
 .idea

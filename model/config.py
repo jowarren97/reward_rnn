@@ -26,7 +26,7 @@ class Conf():
     state_dim = port_dim + 2
     output_dim = port_dim + 1  # onehot: 9 port choices, 1 do-nothing choice
     input_dim = state_dim + output_dim  # onehot: 9 port lights, 1 reward input
-    hidden_dim = 128
+    hidden_dim = 256
 
     # experimental stuff
     sample = False  # whether to sample action from RNN logits, or take max logit as action 
@@ -34,10 +34,12 @@ class Conf():
     weight_init = True  # whether to use weight inits on RNN
     threshold = 5.0  # choose None to use vanilla RNN
     use_rnn_actions = False
+    weight_regularization = 1e-7  # weight regularization
+    activity_regularization = 1e-4
 
     # task params
-    reward_prob = 1.0
-    n_reversals = 1000
+    reward_prob = 0.8
+    n_reversals = 10000000
     max_trials_since_reversal = 10
     p_switch = 1/max_trials_since_reversal
     jitter = 5  # jitter in reward probability
