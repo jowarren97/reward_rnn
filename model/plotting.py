@@ -350,8 +350,11 @@ def plot_average_layout_hists(means, neur_ids=None):
                     # inner_ax.spines['left'].set_visible(False)
                     if (i == Conf.trial_len - 1):# and (row == n_row - 1):
                         # inner_ax.set_xticks([0, 1], ['A', 'B'])
-                        inner_ax.set_xticks([0.5], ['p(B)'])
-                        inner_ax.tick_params(axis='x', which='both', length=0, pad=6)
+                        n_ticks = 10
+                        ticks = np.linspace(0, 1, n_ticks+1, endpoint=True)
+                        assert 0.5 in ticks
+                        inner_ax.set_xticks(ticks, ['' if tick!=0.5 else 'p(B)' for tick in ticks])
+                        inner_ax.tick_params(axis='x', which='both', length=2, pad=8)
                         # inner_ax.set_xlabel('p(B)', fontsize=6)
                     else:
                         inner_ax.set_xticks([])
@@ -379,7 +382,6 @@ def get_means(p_A, inputs_arg_trial, hidden_trial, anomalous_batches, n_p_bins=5
     bins = np.digitize(p_A, bin_edges) - 1 
     conds = [init_step, a_step, b_step]
     h_mean_all_layouts = np.zeros((len(conds), Conf.port_dim, n_p_bins, n_neurons, Conf.trial_len))
-
     # for k in neur_ids:
     #     vmax = np.percentile(hidden_trial[:,:,:,k], 99)
 
@@ -404,4 +406,6 @@ def get_means(p_A, inputs_arg_trial, hidden_trial, anomalous_batches, n_p_bins=5
 
                     h_mean_all_layouts[row, port_id, bin_id, :, :] = np.transpose(h_mean, (1,0))
 
-    return h_mean_all_layouts
+    p_A_bin_counts = np.bincount(bins.flatten(), minlength=n_p_bins)
+
+    return h_mean_all_layouts, p_A_bin_counts
