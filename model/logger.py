@@ -91,7 +91,7 @@ class LearningLogger:
             correct = np.argmax(self.choices_hist, axis=-1) == np.argmax(self.targets_hist, axis=-1)
 
             # reshape into (batch_size, num_trial, num_trial_steps)
-            correct = np.reshape(correct, (correct.shape[0], correct.shape[1] // 5, 5))
+            correct = np.reshape(correct, (correct.shape[0], correct.shape[1] // self.config.trial_len, self.config.trial_len))
             correct_all = np.all(correct, axis=-1)
 
             self.accuracy_steps = 100 * np.sum(correct, axis=(0, 1)) / (correct.shape[0] * correct.shape[1])
@@ -105,11 +105,14 @@ class LearningLogger:
         return
 
     def print(self):
-        trial_stages = ['rew', 'delay', 'init', 'init', 'choice']
+        # trial_stages = ['rew', 'delay', 'init', 'init', 'choice']
+        trial_stages = ['delay' for _ in range(self.config.trial_len)]
+        trial_stages[self.config.r_step] = 'rew'
+        trial_stages[self.config.init_choice_step] = 'init'
+        trial_stages[self.config.ab_choice_step] = 'choice'
         print('Accuracy all steps:\t' + f'{self.accuracy_all:.1f}')
         print(
             'Accuracy each step:\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(self.accuracy_steps, trial_stages)]))
-        print('Accuracy A or B:\t\t\t\t\t\t\t\t' + f'{self.accuracy_pair:.1f}')
 
     def save_data(self, fname='data'):
         start = time()
@@ -133,7 +136,7 @@ class LearningLogger:
         #     self.to_hdf5(hidden.numpy(), 'hidden') 
     #     self.get_data()
 
-        fpath = os.path.join(self.save_dir, fname)
+        # fpath = os.path.join(self.save_dir, fname)
         # print(fpath)
 
         # data_dict = {'inputs_hist': self.inputs_hist,

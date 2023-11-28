@@ -91,8 +91,15 @@ class Block:
 
         action = action if action is not None else do_nothing
         # sequence = np.stack([self.reward_vector, zero_vector, self.init_vector, self.a_b_vector], axis=1)
-        x_sequence = np.stack([self.reward_vector, zero_x_vector, self.init_vector, self.a_vector, self.b_vector], axis=1)
-        a_sequence = np.stack([action, do_nothing, do_nothing, init_action, do_nothing], axis=1)
+        x_sequence = self.get_x_sequence()
+
+        a_sequence_list = [do_nothing for _ in range(self.config.trial_len)]
+        a_sequence_list[0 if self.config.ab_choice_step==self.config.trial_len-1 else self.config.ab_choice_step+1] = action
+        a_sequence_list[self.config.init_choice_step+1] = init_action
+        a_sequence = np.stack(a_sequence_list, axis=1)
+
+        # x_sequence_ = np.stack([self.reward_vector, zero_x_vector, self.init_vector, self.a_vector, self.b_vector], axis=1)
+        # a_sequence_ = np.stack([action, do_nothing, do_nothing, init_action, do_nothing], axis=1)
 
         sequence = np.concatenate([x_sequence, a_sequence], axis=-1)
 
@@ -166,53 +173,86 @@ class DataCurriculum:
 
     def get_target_sequence(self):
         """Generate target sequence containing: inaction, inaction, init port, good port"""
-        target_sequence = []
+        # target_sequence = []
+
+        # do_nothing = np.zeros((self.batch_size, self.output_dim))
+        # do_nothing[:, -1] = 1
+        # target_sequence.append(do_nothing)
+        # target_sequence.append(do_nothing)
+
+        # # initiation port choice
+        # target = self.current_block.init_vector[:, :self.output_dim]
+        # target_sequence.append(target)
+        # # target_sequence.append(target)  # make this longer
+        # target_sequence.append(do_nothing)  # make this longer
+
+        # # # Indices where values are 1 in two-hot matrix
+        # # two_hot_indices = np.where(self.current_block.a_b_vector == 1)[1].reshape(self.batch_size, 2)
+        # # # Use take_along_axis to gather elements from arr according to indices
+        # # gathered = np.take_along_axis(two_hot_indices, self.optimal_agent.choose_action(), axis=1)
+        # # # Since gathered will have shape (64, 1), you might want to flatten it to get a 1D array
+        # # gathered = gathered.flatten()
+        # # # Assume the maximum value in gathered is less than 10
+        # # target = np.eye(self.output_dim)[gathered.astype(int)]  # This creates a one-hot encoded array of shape (64, 10)
+
+        # target = self.optimal_agent.choose_action()
+        # target_sequence.append(target)
 
         do_nothing = np.zeros((self.batch_size, self.output_dim))
         do_nothing[:, -1] = 1
-        target_sequence.append(do_nothing)
-        target_sequence.append(do_nothing)
 
-        # initiation port choice
-        target = self.current_block.init_vector[:, :self.output_dim]
-        target_sequence.append(target)
-        # target_sequence.append(target)  # make this longer
-        target_sequence.append(do_nothing)  # make this longer
+        init_target = self.current_block.init_vector[:, :self.output_dim]
+        
+        choice_target = self.optimal_agent.choose_action()
 
-        # # Indices where values are 1 in two-hot matrix
-        # two_hot_indices = np.where(self.current_block.a_b_vector == 1)[1].reshape(self.batch_size, 2)
-        # # Use take_along_axis to gather elements from arr according to indices
-        # gathered = np.take_along_axis(two_hot_indices, self.optimal_agent.choose_action(), axis=1)
-        # # Since gathered will have shape (64, 1), you might want to flatten it to get a 1D array
-        # gathered = gathered.flatten()
-        # # Assume the maximum value in gathered is less than 10
-        # target = np.eye(self.output_dim)[gathered.astype(int)]  # This creates a one-hot encoded array of shape (64, 10)
+        target_sequence_list = [do_nothing for _ in range(self.config.trial_len)]
+        target_sequence_list[self.config.init_choice_step] = init_target
+        target_sequence_list[self.config.ab_choice_step] = choice_target
 
-        target = self.optimal_agent.choose_action()
-        target_sequence.append(target)
-
-        assert len(target_sequence) == self.config.trial_len
-
-        target_sequence = np.stack(target_sequence, axis=1)
+        assert len(target_sequence_list) == self.config.trial_len
+        
+        target_sequence = np.stack(target_sequence_list, axis=1)
 
         return target_sequence
 
 
     def get_ground_truth_sequence(self):
         """Generate target sequence containing: inaction, inaction, init port, good port"""
-        target_sequence = []
+        # target_sequence = []
+
+        # do_nothing = np.zeros((self.batch_size, self.output_dim))
+        # do_nothing[:, -1] = 1
+        
+        # target_sequence.append(do_nothing)
+        # target_sequence.append(do_nothing)
+
+        # # initiation port choice
+        # target = self.current_block.init_vector[:, :self.output_dim]
+        # target_sequence.append(target)
+        # # target_sequence.append(target)  # make this longer
+        # target_sequence.append(do_nothing)  # make this longer
+
+        # # Indices where values are 1 in two-hot matrix
+        # two_hot_indices = np.where(self.current_block.a_b_vector == 1)[1].reshape(self.batch_size, 2)
+        # # Use take_along_axis to gather elements from arr according to indices
+        # gathered = np.take_along_axis(two_hot_indices, self.current_block.selected_two_hot_index, axis=1)
+        # # Since gathered will have shape (64, 1), you might want to flatten it to get a 1D array
+        # gathered = gathered.flatten()
+        # # Assume the maximum value in gathered is less than 10
+        # target = np.eye(self.output_dim)[gathered.astype(int)]  # This creates a one-hot encoded array of shape (64, 10)
+
+        # target_sequence.append(target)
+
+        # assert len(target_sequence) == self.config.trial_len
+        
+        # target_sequence_ = np.stack(target_sequence, axis=1)
+
 
         do_nothing = np.zeros((self.batch_size, self.output_dim))
         do_nothing[:, -1] = 1
-        target_sequence.append(do_nothing)
-        target_sequence.append(do_nothing)
 
-        # initiation port choice
-        target = self.current_block.init_vector[:, :self.output_dim]
-        target_sequence.append(target)
-        # target_sequence.append(target)  # make this longer
-        target_sequence.append(do_nothing)  # make this longer
-
+        init_target = self.current_block.init_vector[:, :self.output_dim]
+        
         # Indices where values are 1 in two-hot matrix
         two_hot_indices = np.where(self.current_block.a_b_vector == 1)[1].reshape(self.batch_size, 2)
         # Use take_along_axis to gather elements from arr according to indices
@@ -220,13 +260,15 @@ class DataCurriculum:
         # Since gathered will have shape (64, 1), you might want to flatten it to get a 1D array
         gathered = gathered.flatten()
         # Assume the maximum value in gathered is less than 10
-        target = np.eye(self.output_dim)[gathered.astype(int)]  # This creates a one-hot encoded array of shape (64, 10)
+        choice_target = np.eye(self.output_dim)[gathered.astype(int)]  # This creates a one-hot encoded array of shape (64, 10)
 
-        target_sequence.append(target)
+        target_sequence_list = [do_nothing for _ in range(self.config.trial_len)]
+        target_sequence_list[self.config.init_choice_step] = init_target
+        target_sequence_list[self.config.ab_choice_step] = choice_target
 
-        assert len(target_sequence) == self.config.trial_len
+        assert len(target_sequence_list) == self.config.trial_len
         
-        target_sequence = np.stack(target_sequence, axis=1)
+        target_sequence = np.stack(target_sequence_list, axis=1)
 
         return target_sequence
 
@@ -236,16 +278,16 @@ class DataCurriculum:
         action = None
         if ground_truth is not None:
             if self.config.use_rnn_actions:
-                action = model_output[:, -1, :]
+                action = model_output[:, self.config.ab_choice_step, :]
             else:
                 action = self.optimal_agent.last_choice_onehot
 
-            trial_correct = np.argmax(action, axis=-1) == np.argmax(ground_truth[:, -1, :], axis=-1)
+            trial_correct = np.argmax(action, axis=-1) == np.argmax(ground_truth[:, self.config.ab_choice_step, :], axis=-1)
 
             ps = np.random.uniform(size=(self.batch_size,))
             reward_probabilistic = np.where(trial_correct, ps < self.reward_prob, ps > self.reward_prob)
             # reward_probabilistic = reward
-            self.optimal_agent.update_beliefs(reward_probabilistic, choice=model_output[:, -1, :] if self.config.use_rnn_actions else None)
+            self.optimal_agent.update_beliefs(reward_probabilistic, choice=model_output[:, self.config.ab_choice_step, :] if self.config.use_rnn_actions else None)
 
             self.current_block.reward_vector[:, -2] = reward_probabilistic
             self.current_block.reward_vector[:, -1] = 1 - reward_probabilistic

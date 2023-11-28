@@ -6,13 +6,16 @@ from config import Conf
 from logger import LearningLogger
 from time import time
 import os
+from tqdm import tqdm
 
 print("Using device: ", Conf.dev)
 
 Conf.batch_size = 504
 Conf.reward_prob = 0.8
 Conf.hidden_dim = 256
-load_dir = 'run_data_08_256_l2_1e6_l2_3e4'
+Conf.num_epochs_test = 1
+# load_dir = 'run_data_08_256_l2_1e6_l2_3e4'
+load_dir = 'run_data_trial_len_8_c'
 # load_dir = 'run_data'
 load_dir = os.path.join(os.getcwd(), load_dir)
 print(load_dir)
@@ -20,7 +23,7 @@ Conf.save_dir = load_dir
 
 # Initialize model, curriculum, loss function and optimizer
 model = SimpleRNN(Conf)
-model.load_state_dict(torch.load(os.path.join(load_dir, 'weights_50000.pth')))
+model.load_state_dict(torch.load(os.path.join(load_dir, 'weights_93000.pth')))
 
 data_curriculum = DataCurriculum(Conf, eval=True)
 logger = LearningLogger(Conf)
@@ -36,7 +39,7 @@ def step(model, num_trials, logger=None):
     target_tensor = torch.tensor(next_target, dtype=Conf.dtype, device=Conf.dev)
     t = 0
     s_ = time()
-    for trial in range(num_trials):
+    for trial in tqdm(range(num_trials)):
         """Loop through trials (chunks of 5 timesteps)."""
         # Forward pass
         logits, hidden, hiddens = model(data_tensor, hidden)

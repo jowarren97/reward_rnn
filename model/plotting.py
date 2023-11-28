@@ -248,12 +248,10 @@ def plot_trials(inputs, ground_truth, targets, choices, p_A, b=0, trials=200, sf
 #             fig.savefig(fpath)              
 
 
-def plot_average_layout_hists(means, neur_ids=None):
+def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
     neur_ids = neur_ids if neur_ids is not None else np.arange(means.shape[-2])
-    polar = True
     separate_figures = True
-    overwrite = True
-    init_step, a_step, b_step = 2, 3, 4
+    # init_step, a_step, b_step = 2, 3, 4
     # load_dir = '../run_data_1_128_l2_1e6_l2_3e4'
 
     n_p_bins = means.shape[2]
@@ -269,13 +267,11 @@ def plot_average_layout_hists(means, neur_ids=None):
         # Adjusting figure size based on the number of batches and neurons
         fig_width = 16  # Adjust width as needed
         fig_height = 9  # Adjust height as needed
-        save_dir = os.path.join(Conf.save_dir, 'separate_figs', 'polar' if polar else 'planar', 'mean', f'hist_griddy_{n_p_bins}')
+        save_dir = os.path.join(Conf.save_dir, 'separate_figs', 'polar', 'mean', f'hist_griddy_{n_p_bins}')
         print(save_dir)
         if not os.path.exists(save_dir): os.makedirs(save_dir)
 
     theta = np.linspace(0, 2*np.pi, Conf.trial_len, endpoint=False)
-    if polar:
-        theta = np.append(theta, theta[0])
 
     for k in tqdm(neur_ids):
         # vmax = np.minimum(Conf.threshold, np.mean(hiddens[:, 5*Conf.trial_len:, k] + 2 * np.std(hiddens[:, 5*Conf.trial_len:, k])))
@@ -294,7 +290,7 @@ def plot_average_layout_hists(means, neur_ids=None):
             raise NotImplementedError()
 
         for port_id in range(Conf.port_dim):
-            for row, step in enumerate([init_step, a_step, b_step]):
+            for row, step in enumerate([Conf.init_step, Conf.a_step, Conf.b_step]):
                 ax = axes[row, port_id]
                 ax.xaxis.set_visible(False)
                 # ax.yaxis.set_visible(False)
@@ -315,12 +311,12 @@ def plot_average_layout_hists(means, neur_ids=None):
                 bin_heights = np.zeros((Conf.trial_len, n_p_bins))
                 for bin_id in range(n_p_bins):
                     h_mean = means[row, port_id, bin_id, k, :]
-                    bin_heights[:, bin_id] = np.roll(h_mean, shift=-2)
+                    bin_heights[:, bin_id] = np.roll(h_mean, shift=-Conf.init_step)
                 # q: how do I make 5 axes within main axis?
 
                 # Parameters for inner axes
                 inner_ax_width = "100%"  # Example width
-                inner_ax_height = "10%" # Example height
+                inner_ax_height = "5%" # Example height
 
                 y_shift = (1 - 0.3)/Conf.trial_len
                 # Create and plot in inner axes
@@ -343,7 +339,14 @@ def plot_average_layout_hists(means, neur_ids=None):
                     
                     # Turn off tick labels
                     if port_id == 0:
-                        inner_ax.set_ylabel(['init', 'delay', 'choice', 'reward', 'ITI'][i], fontsize=6)
+                        y_labels = ['0\n0' for _ in range(Conf.trial_len)]
+                        y_labels[Conf.init_step] = '0\ninit'
+                        y_labels[Conf.init_choice_step] = 'init\n0'
+                        y_labels[Conf.a_step] = '0\na'
+                        y_labels[Conf.b_step] = '0\nb'
+                        y_labels[Conf.ab_choice_step] = 'ch\n0'
+                        y_labels[Conf.r_step] = '0\nrew'
+                        inner_ax.set_ylabel(np.roll(y_labels, shift=-Conf.init_step)[i], fontsize=6)
                     inner_ax.set_yticks([])
                     inner_ax.spines['right'].set_visible(False)
                     inner_ax.spines['top'].set_visible(False)
@@ -377,10 +380,9 @@ def plot_average_layout_hists(means, neur_ids=None):
                     
 def get_means(p_A, inputs_arg_trial, hidden_trial, anomalous_batches, n_p_bins=50): 
     n_neurons = hidden_trial.shape[-1]
-    init_step, a_step, b_step = 2, 3, 4 
     bin_edges = np.linspace(1, 0, n_p_bins+1)  # Creates 5 edges for 4 bins
     bins = np.digitize(p_A, bin_edges) - 1 
-    conds = [init_step, a_step, b_step]
+    conds = [Conf.init_step, Conf.a_step, Conf.b_step]
     h_mean_all_layouts = np.zeros((len(conds), Conf.port_dim, n_p_bins, n_neurons, Conf.trial_len))
     # for k in neur_ids:
     #     vmax = np.percentile(hidden_trial[:,:,:,k], 99)

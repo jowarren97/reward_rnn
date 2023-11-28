@@ -147,5 +147,5 @@ for epoch in range(Conf.num_epochs):
         # data_curriculum.reset(train=True)
 
         if epoch % Conf.save_data_interval == 0:
-            logger.save_data(fname='data_' + str(epoch))
+        #     logger.save_data(fname='data_' + str(epoch))
             torch.save(model.state_dict(), os.path.join(logger.save_dir, 'weights_' + str(epoch) + '.pth'))
