@@ -82,21 +82,11 @@ class Block:
 
     def get_data_sequence(self, action=None):
         """Generate an input sequence as per the block definition."""
-        zero_x_vector = np.zeros((self.batch_size, self.state_dim))
 
-        do_nothing = np.zeros((self.batch_size, self.output_dim))
-        do_nothing[:, -1] = 1
-
-        init_action = self.init_vector[:, :self.output_dim]
-
-        action = action if action is not None else do_nothing
         # sequence = np.stack([self.reward_vector, zero_vector, self.init_vector, self.a_b_vector], axis=1)
         x_sequence = self.get_x_sequence()
 
-        a_sequence_list = [do_nothing for _ in range(self.config.trial_len)]
-        a_sequence_list[0 if self.config.ab_choice_step==self.config.trial_len-1 else self.config.ab_choice_step+1] = action
-        a_sequence_list[self.config.init_choice_step+1] = init_action
-        a_sequence = np.stack(a_sequence_list, axis=1)
+        a_sequence = self.get_a_in_sequence(action)
 
         # x_sequence_ = np.stack([self.reward_vector, zero_x_vector, self.init_vector, self.a_vector, self.b_vector], axis=1)
         # a_sequence_ = np.stack([action, do_nothing, do_nothing, init_action, do_nothing], axis=1)
@@ -104,7 +94,34 @@ class Block:
         sequence = np.concatenate([x_sequence, a_sequence], axis=-1)
 
         return sequence
+    
+    def get_x_sequence(self):
+        zero_x_vector = np.zeros((self.batch_size, self.state_dim))
+        x_sequence_list = [zero_x_vector for _ in range(self.config.trial_len)]
+        x_sequence_list[self.config.init_step] = self.init_vector
+        x_sequence_list[self.config.a_step] = self.a_vector
+        x_sequence_list[self.config.b_step] = self.b_vector
+        x_sequence_list[self.config.r_step] = self.reward_vector
+        x_sequence = np.stack(x_sequence_list, axis=1)
 
+        assert x_sequence.shape[-1] == self.config.state_dim
+
+        return x_sequence
+    
+    def get_a_in_sequence(self, action=None):
+        do_nothing = np.zeros((self.batch_size, self.config.action_dim))
+        do_nothing[:, -1] = 1
+        init_action = self.init_vector[:, :self.config.action_dim]
+        choice_action = action if action is not None else do_nothing
+
+        a_sequence_list = [do_nothing for _ in range(self.config.trial_len)]
+        a_sequence_list[0 if self.config.ab_choice_step==self.config.trial_len-1 else self.config.ab_choice_step+1] = choice_action
+        a_sequence_list[self.config.init_choice_step+1] = init_action
+        a_sequence = np.stack(a_sequence_list, axis=1)
+
+        assert a_sequence.shape[-1] == self.config.action_dim
+
+        return a_sequence
     # def get_target_sequence(self):
     #     """Generate target sequence containing: inaction, inaction, init port, good port"""
     #     target_sequence = []
@@ -198,22 +215,73 @@ class DataCurriculum:
         # target = self.optimal_agent.choose_action()
         # target_sequence.append(target)
 
-        do_nothing = np.zeros((self.batch_size, self.output_dim))
+        # do_nothing = np.zeros((self.batch_size, self.output_dim))
+        # do_nothing[:, -1] = 1
+
+        # init_target = self.current_block.init_vector[:, :self.output_dim]
+        
+        # choice_target = self.optimal_agent.choose_action()
+
+        # target_sequence_list = [do_nothing for _ in range(self.config.trial_len)]
+        # target_sequence_list[self.config.init_choice_step] = init_target
+        # target_sequence_list[self.config.ab_choice_step] = choice_target
+
+        # assert len(target_sequence_list) == self.config.trial_len
+        
+        # target_sequence = np.stack(target_sequence_list, axis=1)
+
+        a_sequence = self.get_a_out_sequence()
+
+        if self.config.predict_x:
+            x_sequence = self.current_block.get_x_sequence()
+            target_sequence = np.concatenate([x_sequence, a_sequence], axis=-1)
+        else:
+            target_sequence = a_sequence
+
+        return target_sequence
+    
+    def get_a_out_sequence(self):
+        do_nothing = np.zeros((self.batch_size, self.config.action_dim))
         do_nothing[:, -1] = 1
 
-        init_target = self.current_block.init_vector[:, :self.output_dim]
+        init_target = self.current_block.init_vector[:, :self.config.action_dim]
         
         choice_target = self.optimal_agent.choose_action()
 
-        target_sequence_list = [do_nothing for _ in range(self.config.trial_len)]
-        target_sequence_list[self.config.init_choice_step] = init_target
-        target_sequence_list[self.config.ab_choice_step] = choice_target
+        a_sequence_list = [do_nothing for _ in range(self.config.trial_len)]
+        a_sequence_list[self.config.init_choice_step] = init_target
+        a_sequence_list[self.config.ab_choice_step] = choice_target
 
-        assert len(target_sequence_list) == self.config.trial_len
+        assert len(a_sequence_list) == self.config.trial_len
         
-        target_sequence = np.stack(target_sequence_list, axis=1)
+        a_sequence = np.stack(a_sequence_list, axis=1)
 
-        return target_sequence
+        return a_sequence
+    
+    def get_ground_truth_a_sequence(self):
+        do_nothing = np.zeros((self.batch_size, self.config.action_dim))
+        do_nothing[:, -1] = 1
+
+        init_target = self.current_block.init_vector[:, :self.config.action_dim]
+        
+        # Indices where values are 1 in two-hot matrix
+        two_hot_indices = np.where(self.current_block.a_b_vector == 1)[1].reshape(self.batch_size, 2)
+        # Use take_along_axis to gather elements from arr according to indices
+        gathered = np.take_along_axis(two_hot_indices, self.current_block.selected_two_hot_index, axis=1)
+        # Since gathered will have shape (64, 1), you might want to flatten it to get a 1D array
+        gathered = gathered.flatten()
+        # Assume the maximum value in gathered is less than 10
+        choice_target = np.eye(self.config.action_dim)[gathered.astype(int)]  # This creates a one-hot encoded array of shape (64, 10)
+
+        a_sequence_list = [do_nothing for _ in range(self.config.trial_len)]
+        a_sequence_list[self.config.init_choice_step] = init_target
+        a_sequence_list[self.config.ab_choice_step] = choice_target
+
+        assert len(a_sequence_list) == self.config.trial_len
+
+        a_sequence = np.stack(a_sequence_list, axis=1)
+
+        return a_sequence
 
 
     def get_ground_truth_sequence(self):
@@ -247,28 +315,9 @@ class DataCurriculum:
         
         # target_sequence_ = np.stack(target_sequence, axis=1)
 
-
-        do_nothing = np.zeros((self.batch_size, self.output_dim))
-        do_nothing[:, -1] = 1
-
-        init_target = self.current_block.init_vector[:, :self.output_dim]
-        
-        # Indices where values are 1 in two-hot matrix
-        two_hot_indices = np.where(self.current_block.a_b_vector == 1)[1].reshape(self.batch_size, 2)
-        # Use take_along_axis to gather elements from arr according to indices
-        gathered = np.take_along_axis(two_hot_indices, self.current_block.selected_two_hot_index, axis=1)
-        # Since gathered will have shape (64, 1), you might want to flatten it to get a 1D array
-        gathered = gathered.flatten()
-        # Assume the maximum value in gathered is less than 10
-        choice_target = np.eye(self.output_dim)[gathered.astype(int)]  # This creates a one-hot encoded array of shape (64, 10)
-
-        target_sequence_list = [do_nothing for _ in range(self.config.trial_len)]
-        target_sequence_list[self.config.init_choice_step] = init_target
-        target_sequence_list[self.config.ab_choice_step] = choice_target
-
-        assert len(target_sequence_list) == self.config.trial_len
-        
-        target_sequence = np.stack(target_sequence_list, axis=1)
+        x_sequence = self.current_block.get_x_sequence()
+        a_sequence = self.get_ground_truth_a_sequence()
+        target_sequence = np.concatenate([x_sequence, a_sequence], axis=-1)
 
         return target_sequence
 
@@ -282,12 +331,12 @@ class DataCurriculum:
             else:
                 action = self.optimal_agent.last_choice_onehot
 
-            trial_correct = np.argmax(action, axis=-1) == np.argmax(ground_truth[:, self.config.ab_choice_step, :], axis=-1)
+            trial_correct = np.argmax(action, axis=-1) == np.argmax(ground_truth[:, self.config.ab_choice_step, -self.config.action_dim:], axis=-1)
 
             ps = np.random.uniform(size=(self.batch_size,))
             reward_probabilistic = np.where(trial_correct, ps < self.reward_prob, ps > self.reward_prob)
             # reward_probabilistic = reward
-            self.optimal_agent.update_beliefs(reward_probabilistic, choice=model_output[:, self.config.ab_choice_step, :] if self.config.use_rnn_actions else None)
+            self.optimal_agent.update_beliefs(reward_probabilistic, choice=model_output[:, self.config.ab_choice_step, -self.config.action_dim:] if self.config.use_rnn_actions else None)
 
             self.current_block.reward_vector[:, -2] = reward_probabilistic
             self.current_block.reward_vector[:, -1] = 1 - reward_probabilistic
@@ -325,6 +374,24 @@ class DataCurriculum:
         self.block_reversals[switch_mask] = 0
         # reset bayes agent probabilities
         self.optimal_agent.switch(switch_mask, self.current_block.a_vector, self.current_block.b_vector)
+
+
+    # def get_offline_data_sequence(self, num_trials):
+
+    #     inputs, targets, ground_truths = [], [], []
+    #     for i in range(num_trials):
+    #         next_input, next_target, ground_truth = self.step(ground_truth=None if i==0 else ground_truth)
+
+    #         inputs.append(next_input)
+    #         targets.append(next_target)
+    #         ground_truths.append(ground_truth)
+
+    #     inputs = np.concatenate(inputs, axis=1)
+    #     targets = np.concatenate(targets, axis=1)
+    #     ground_truths = np.concatenate(ground_truths, axis=1)
+        
+    #     return inputs, targets, ground_truths
+
 
 
 def generate_permutation_sets(port_dim):
@@ -439,3 +506,5 @@ def check_train_test_split(curriculum, train):
         assert not any([p in curriculum.current_block.train_layouts.tolist() for p in perms.tolist()])
         assert all([p in curriculum.current_block.test_layouts.tolist() for p in perms.tolist()])
 
+
+    

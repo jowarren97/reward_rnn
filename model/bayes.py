@@ -7,7 +7,7 @@ class BayesAgent:
         self.p_A_high = 0.5 * np.ones((self.batch_size, 1))  # batched initial beliefs
         self.a_vector = a_vector
         self.b_vector = b_vector
-        self.output_dim = config.output_dim
+        self.output_dim = config.action_dim
         self.config = config
 
     def update_beliefs(self, reward, choice=None):

@@ -285,7 +285,7 @@ def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
                 print(f'file {fpath} already exists')
                 continue
             fig, axes = plt.subplots(n_row, n_col, figsize=(fig_width, fig_height), layout='constrained')
-            fig.suptitle(f'Neuron {k}', fontsize=14)
+            fig.suptitle(f'Neuron {k} (max: {vmax:.2f})', fontsize=14)
         else:
             raise NotImplementedError()
 

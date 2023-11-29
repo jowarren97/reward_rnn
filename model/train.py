@@ -28,6 +28,7 @@ model = SimpleRNN(Conf)
 data_curriculum = DataCurriculum(Conf)
 logger = LearningLogger(Conf)
 criterion = nn.CrossEntropyLoss()
+# criterion = nn.BCEWithLogitsLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=Conf.lr)
 epoch_time = 0
 
@@ -94,6 +95,36 @@ def step(model, num_trials, logger=None):
     
     return loss_trials, loss_w_regs, loss_h_regs
 
+# def step_offline(model, num_trials, logger=None):
+#     """Do one epoch."""
+#     hidden = None
+#     loss_trials, loss_w_regs, loss_h_regs = 0, 0, 0
+#     # Get the initial sequence for the epoch
+#     next_input, next_target, ground_truth = data_curriculum.get_offline_data_sequence(num_trials)
+#     # Convert data to tensors
+#     data_tensor = torch.tensor(next_input, dtype=Conf.dtype, device=Conf.dev)
+#     target_tensor = torch.tensor(next_target, dtype=Conf.dtype, device=Conf.dev)
+    
+#     logits, hidden, hiddens = model(data_tensor, hidden)
+
+#     # store data in logger for later computation of accuracies
+#     if logger is not None:
+#         logger.log(logits.cpu().detach(), target_tensor.cpu().detach(), data_tensor.cpu().detach(), 
+#                     ground_truth, data_curriculum.optimal_agent.p_A_high, hiddens.cpu().detach())
+
+#     logits_ = torch.transpose(logits, 1, 2)
+#     targets_ = torch.transpose(target_tensor, 1, 2)
+#     # loss_trial = criterion(logits_[:, :, -2:], targets_[:, :, -2:])
+#     loss_trial = criterion(logits_, targets_)
+#     loss_trials += loss_trial
+#     if Conf.weight_regularization > 0:
+#         loss_w_reg = compute_weight_reg_loss(model, lambda_reg=Conf.weight_regularization, type='l2')
+#         loss_w_regs += loss_w_reg
+#     if Conf.activity_regularization > 0:
+#         loss_h_reg = compute_activity_reg_loss(hiddens, lambda_reg=Conf.activity_regularization, type='l2')
+#         loss_h_regs += loss_h_reg
+
+#     return loss_trials, loss_w_regs, loss_h_regs
 
 for epoch in range(Conf.num_epochs):
     # empty logger data, put model in train mode, reset optimizer
@@ -105,6 +136,7 @@ for epoch in range(Conf.num_epochs):
     optimizer.zero_grad()
 
     start = time()
+    # loss_trials, loss_w_regs, loss_h_regs = step_offline(model, Conf.num_trials, logger)
     loss_trials, loss_w_regs, loss_h_regs = step(model, Conf.num_trials, logger)
     forward_time = time() - start
     if not debug:

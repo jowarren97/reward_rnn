@@ -20,9 +20,8 @@ class LearningLogger:
         # self.hdf5_file = h5py.File(self.hdf5_path, 'w')  # Open in write mode
 
     def reset(self):
-        self.accuracy_steps = 0
-        self.accuracy_all = 0
-        self.accuracy_pair = 0
+        self.a_accuracy_steps = 0
+        self.x_accuracy_steps = 0
         self.n_trials = 0
 
         self.targets_hist_buffer = []
@@ -36,11 +35,11 @@ class LearningLogger:
         self.n_trials += 1
 
         if logits is not None:
-            accuracy_all, accuracy_steps, accuracy_pair = self.compute_trial_accuracy(logits, targets, inputs)
+            # accuracy_all, accuracy_steps, accuracy_pair = self.compute_trial_accuracy(logits, targets, inputs)
 
-            self.accuracy_steps = ( self.accuracy_steps * (self.n_trials - 1) + accuracy_steps ) / self.n_trials
-            self.accuracy_all = ( self.accuracy_all * (self.n_trials - 1) + accuracy_all ) / self.n_trials
-            self.accuracy_pair = ( self.accuracy_pair * (self.n_trials - 1) + accuracy_pair ) / self.n_trials
+            # self.a_accuracy_steps = ( self.a_accuracy_steps * (self.n_trials - 1) + accuracy_steps ) / self.n_trials
+            # self.accuracy_all = ( self.accuracy_all * (self.n_trials - 1) + accuracy_all ) / self.n_trials
+            # self.accuracy_pair = ( self.accuracy_pair * (self.n_trials - 1) + accuracy_pair ) / self.n_trials
             self.choices_hist_buffer.append(torch.nn.functional.softmax(logits, dim=-1).numpy())        
 
         if inputs is not None:
@@ -88,13 +87,17 @@ class LearningLogger:
         
         if len(self.choices_hist_buffer):
             self.choices_hist = np.concatenate(self.choices_hist_buffer, axis=1)
-            correct = np.argmax(self.choices_hist, axis=-1) == np.argmax(self.targets_hist, axis=-1)
-
+            # choices_idx = 0 if not self.config.predict_x else self.config.state_dim
+            a_correct = np.argmax(self.choices_hist[:,:,-self.config.action_dim:], axis=-1) == np.argmax(self.targets_hist[:,:,-self.config.action_dim:], axis=-1)
             # reshape into (batch_size, num_trial, num_trial_steps)
-            correct = np.reshape(correct, (correct.shape[0], correct.shape[1] // self.config.trial_len, self.config.trial_len))
-            correct_all = np.all(correct, axis=-1)
+            a_correct = np.reshape(a_correct, (a_correct.shape[0], a_correct.shape[1] // self.config.trial_len, self.config.trial_len))
+            self.a_accuracy_steps = 100 * np.sum(a_correct, axis=(0, 1)) / (a_correct.shape[0] * a_correct.shape[1])
 
-            self.accuracy_steps = 100 * np.sum(correct, axis=(0, 1)) / (correct.shape[0] * correct.shape[1])
+            if self.config.predict_x:
+                x_correct = np.argmax(self.choices_hist[:,:,:-self.config.action_dim], axis=-1) == np.argmax(self.targets_hist[:,:,:-self.config.action_dim], axis=-1)
+                # reshape into (batch_size, num_trial, num_trial_steps)
+                x_correct = np.reshape(x_correct, (x_correct.shape[0], x_correct.shape[1] // self.config.trial_len, self.config.trial_len))
+                self.x_accuracy_steps = 100 * np.sum(x_correct, axis=(0, 1)) / (a_correct.shape[0] * a_correct.shape[1])
         # acc_all = 100 * np.sum(correct_all, axis=(0,1)) / (correct_all.shape[0] * correct_all.shape[1])
         # acc_steps = []
         # for i in range(self.inputs_hist_buffer[0].shape[1]):
@@ -106,13 +109,18 @@ class LearningLogger:
 
     def print(self):
         # trial_stages = ['rew', 'delay', 'init', 'init', 'choice']
-        trial_stages = ['delay' for _ in range(self.config.trial_len)]
-        trial_stages[self.config.r_step] = 'rew'
-        trial_stages[self.config.init_choice_step] = 'init'
-        trial_stages[self.config.ab_choice_step] = 'choice'
-        print('Accuracy all steps:\t' + f'{self.accuracy_all:.1f}')
-        print(
-            'Accuracy each step:\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(self.accuracy_steps, trial_stages)]))
+        a_trial_stages = ['nothing' for _ in range(self.config.trial_len)]
+        a_trial_stages[self.config.init_choice_step] = 'init'
+        a_trial_stages[self.config.ab_choice_step] = 'choice'
+
+        x_trial_stages = ['nothing' for _ in range(self.config.trial_len)]
+        x_trial_stages[self.config.init_step] = 'init'
+        x_trial_stages[self.config.r_step] = 'reward'
+        x_trial_stages[self.config.a_step] = 'a'
+        x_trial_stages[self.config.b_step] = 'b'
+        print('Accuracy each step (a):\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(self.a_accuracy_steps, a_trial_stages)]))
+        if self.config.predict_x:
+            print('Accuracy each step (x):\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(self.x_accuracy_steps, x_trial_stages)]))
 
     def save_data(self, fname='data'):
         start = time()

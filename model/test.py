@@ -15,7 +15,7 @@ Conf.reward_prob = 0.8
 Conf.hidden_dim = 256
 Conf.num_epochs_test = 1
 # load_dir = 'run_data_08_256_l2_1e6_l2_3e4'
-load_dir = 'run_data_trial_len_8_c'
+load_dir = 'run_data_trial_len_8_f'
 # load_dir = 'run_data'
 load_dir = os.path.join(os.getcwd(), load_dir)
 print(load_dir)
@@ -23,7 +23,7 @@ Conf.save_dir = load_dir
 
 # Initialize model, curriculum, loss function and optimizer
 model = SimpleRNN(Conf)
-model.load_state_dict(torch.load(os.path.join(load_dir, 'weights_93000.pth')))
+model.load_state_dict(torch.load(os.path.join(load_dir, 'weights_70000.pth')))
 
 data_curriculum = DataCurriculum(Conf, eval=True)
 logger = LearningLogger(Conf)
@@ -69,6 +69,23 @@ def step(model, num_trials, logger=None):
 model.eval()
 
 for i in range(Conf.num_epochs_test):
+    data_curriculum = DataCurriculum(Conf, eval=False)
+    data_curriculum.reset(train=True)     
+    check_train_test_split(data_curriculum, train=True)
+    logger.reset()
+    step(model, num_trials=Conf.num_trials_test, logger=logger)
+    logger.get_data()
+    logger.print()
+
+    data_curriculum = DataCurriculum(Conf, eval=False)
+    data_curriculum.reset(train=False)     
+    check_train_test_split(data_curriculum, train=False)
+    logger.reset()
+    step(model, num_trials=Conf.num_trials_test, logger=logger)
+    logger.get_data()
+    logger.print()
+
+    data_curriculum = DataCurriculum(Conf, eval=True)
     data_curriculum.reset(train=False)
     logger.reset()
     step(model, num_trials=Conf.num_trials_test, logger=logger)
