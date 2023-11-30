@@ -13,10 +13,6 @@ def init_weights_thresholded_rnn(rnn_cell):
     rnn_cell.h2a.bias.data.zero_()
     rnn_cell.h2h.bias.data.zero_()
 
-    print(rnn_cell.h2h.weight)
-    print(torch.norm(rnn_cell.i2h.weight, dim=0))
-
-
 def init_weights_rnn(rnn):
     for name, param in rnn.named_parameters():
         # if 'weight_ih' in name:  # Input-to-hidden weights

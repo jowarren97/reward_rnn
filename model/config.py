@@ -14,7 +14,7 @@ class Conf():
     #     dev = torch.device("cpu")
 
     # curriculum params
-    lr = 0.0001
+    lr = 1e-4
     num_epochs = 100000
     num_trials = 50  # per epoch; timesteps = num_trials * 4  (reward, delay, init, choice)
     num_trials_test = 1000
@@ -22,11 +22,11 @@ class Conf():
     batch_size = 64
 
     # trial params
-    # trial_len = 8
-    trial_len = 5
+    trial_len = 8
+    # trial_len = 5
     port_dim = 9
-    # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 5, 6, 3, 7
-    r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 3, 4, 2, 4
+    r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 5, 6, 3, 7
+    # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 3, 4, 2, 4
     assert ab_choice_step < trial_len
     assert a_step != b_step != init_step != r_step
     state_dim = port_dim + 2
@@ -40,13 +40,13 @@ class Conf():
     weight_init = True  # whether to use weight inits on RNN
     threshold = 5.0  # choose None to use vanilla RNN
     use_rnn_actions = False
-    weight_regularization = 1e-7  # weight regularization
-    activity_regularization = 1e-4
-    predict_x = False
+    weight_regularization = 1e-6 #1e-7  # weight regularization
+    activity_regularization = 3e-4 #1e-4
+    predict_x = True
     output_dim = input_dim if predict_x else action_dim
 
     # task params
-    reward_prob = 0.8
+    reward_prob = 1.0
     n_reversals = 10000000
     max_trials_since_reversal = 10
     p_switch = 1/max_trials_since_reversal

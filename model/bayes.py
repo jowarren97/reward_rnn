@@ -10,7 +10,7 @@ class BayesAgent:
         self.output_dim = config.action_dim
         self.config = config
 
-    def update_beliefs(self, reward, choice=None):
+    def update_beliefs(self, reward):
         """
         Update beliefs based on the choice made and the reward received.
         

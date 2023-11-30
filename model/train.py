@@ -47,6 +47,7 @@ def step(model, num_trials, logger=None):
     """Do one epoch."""
     hidden = None
     loss_trials, loss_w_regs, loss_h_regs = 0, 0, 0
+    loss_trials_action, loss_trials_state = 0, 0
     # Get the initial sequence for the epoch
     next_input, next_target, ground_truth = data_curriculum.step()
 
@@ -71,12 +72,21 @@ def step(model, num_trials, logger=None):
                        ground_truth, data_curriculum.optimal_agent.p_A_high, hiddens.cpu().detach())
 
         # loss_trial = criterion(logits[:, -1, :], target_tensor[:, -1, :])
-
+ 
         logits_ = torch.transpose(logits, 1, 2)
         targets_ = torch.transpose(target_tensor, 1, 2)
         # loss_trial = criterion(logits_[:, :, -2:], targets_[:, :, -2:])
-        loss_trial = criterion(logits_, targets_)
-        loss_trials += loss_trial
+        if Conf.predict_x:
+            logits_state, logits_action = data_curriculum.split_tensor(logits_)
+            targets_state, targets_action = data_curriculum.split_tensor(targets_)
+            loss_trial_state = criterion(logits_state, targets_state)
+            loss_trial_action = criterion(logits_action, targets_action)
+            loss_trials_state += loss_trial_state
+            loss_trials_action += loss_trial_action
+        else:
+            loss_trial_action = criterion(logits_, targets_)
+            loss_trials_action += loss_trial_action
+
         if Conf.weight_regularization > 0:
             loss_w_reg = compute_weight_reg_loss(model, lambda_reg=Conf.weight_regularization, type='l2')
             loss_w_regs += loss_w_reg
@@ -92,7 +102,13 @@ def step(model, num_trials, logger=None):
         data_tensor = torch.tensor(next_input, dtype=Conf.dtype, device=Conf.dev)
         target_tensor = torch.tensor(next_target, dtype=Conf.dtype, device=Conf.dev)
 
-    
+    if Conf.predict_x:
+        loss_trials = loss_trials_state + loss_trials_action
+        # print(f'l_a: {loss_trials_action:.2f}, l_x: {loss_trials_state:.2f}')
+    else:
+        loss_trials = loss_trials_action
+        # print(f'l_a: {loss_trials_action:.2f}')
+
     return loss_trials, loss_w_regs, loss_h_regs
 
 # def step_offline(model, num_trials, logger=None):

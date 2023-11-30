@@ -1,0 +1,19 @@
+Refactor notes:
+
+Environment:
+- Base class with functions:
+    - TENSORS
+    - get training batch
+        - get training block
+            - get inputs
+                - get x sequence
+                - get a sequence
+                - get r sequence
+            - get targets
+                - get x sequence
+                - get a sequence
+                - get r sequence
+            - get training mask
+    - split input/output to a,x,r
+
+

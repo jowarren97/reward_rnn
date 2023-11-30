@@ -3,6 +3,7 @@ from bayes import BayesAgent
 from itertools import permutations
 from copy import copy
 from random import shuffle
+import torch
 
 epsilon = 1e-8
 
@@ -336,7 +337,7 @@ class DataCurriculum:
             ps = np.random.uniform(size=(self.batch_size,))
             reward_probabilistic = np.where(trial_correct, ps < self.reward_prob, ps > self.reward_prob)
             # reward_probabilistic = reward
-            self.optimal_agent.update_beliefs(reward_probabilistic, choice=model_output[:, self.config.ab_choice_step, -self.config.action_dim:] if self.config.use_rnn_actions else None)
+            self.optimal_agent.update_beliefs(reward_probabilistic)
 
             self.current_block.reward_vector[:, -2] = reward_probabilistic
             self.current_block.reward_vector[:, -1] = 1 - reward_probabilistic
@@ -374,6 +375,11 @@ class DataCurriculum:
         self.block_reversals[switch_mask] = 0
         # reset bayes agent probabilities
         self.optimal_agent.switch(switch_mask, self.current_block.a_vector, self.current_block.b_vector)
+
+    def split_tensor(self, tensor, axis=1):
+        state, action = torch.split(tensor, [self.config.state_dim, self.config.action_dim], dim=axis)
+
+        return state, action
 
 
     # def get_offline_data_sequence(self, num_trials):
