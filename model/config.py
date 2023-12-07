@@ -26,6 +26,7 @@ class Conf():
     # trial_len = 5
     port_dim = 9
     r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 5, 6, 3, 7
+    # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 1, 4, 5, 2, 6
     # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 3, 4, 2, 4
     assert ab_choice_step < trial_len
     assert a_step != b_step != init_step != r_step
@@ -46,7 +47,7 @@ class Conf():
     output_dim = input_dim if predict_x else action_dim
 
     # task params
-    reward_prob = 1.0
+    reward_prob = 0.8
     n_reversals = 10000000
     max_trials_since_reversal = 10
     p_switch = 1/max_trials_since_reversal
@@ -55,4 +56,21 @@ class Conf():
     # data output params
     print_loss_interval = 50
     save_data_interval = 1000
-    save_dir = os.path.join(os.getcwd(), 'run_data_orig')
+    save_dir = os.path.join(os.getcwd(), 'run_data_new')
+
+    a_dim = port_dim
+    x_dim = port_dim
+    r_dim = 2
+    t_ax = 1
+    batch_ax = 0
+    env_dev = 'cpu'
+    no_stim_token, no_reward_token, no_action_token = True, False, True
+    if no_stim_token: x_dim += 1
+    if no_reward_token: r_dim += 1
+    if no_action_token: a_dim += 1
+
+    input_dim = x_dim + r_dim + a_dim  # onehot: 9 port lights, 2 reward input
+    output_dim = x_dim + r_dim + a_dim
+
+    save_type = "SAVE_DICT"  # "SAVE_OBJECT"
+    n_batches = 50

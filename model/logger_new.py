@@ -179,3 +179,32 @@ class LearningLogger:
 
         # return acc_all, acc_step, acc_pair
         return np.nan, np.nan, np.nan
+
+    def get_all_accuracies(self, logits, targets):
+        splits = ['x', 'r', 'a']
+        steps_split = [[self.config.init_step-1, self.config.a_step-1, self.config.b_step-1],
+                       [self.config.r_step-1],
+                       [self.config.init_choice_step, self.config.ab_choice_step]]
+        
+        dim_splits = [self.config.x_dim, self.config.r_dim, self.config.a_dim]
+        logits_split = torch.split(logits, dim_splits, dim=-1)
+        targets_split = torch.split(targets, dim_splits, dim=-1)
+
+        accuracies = dict()
+        for split, steps, logit, target in zip(splits, steps_split, logits_split, targets_split):
+            accuracies[split] = self.get_accuracy_steps(logit, target, steps)
+
+        return accuracies, steps_split
+            
+    def get_accuracy_steps(self, logits, targets, steps=None):
+        if steps is None:
+            steps = [i for i in range(self.config.trial_len)]
+
+        T = logits.shape[self.config.t_ax]
+        logits_steps = logits.reshape((self.config.batch_size, T//self.config.trial_len, self.config.trial_len, logits.shape[-1]))[:, :, steps, :]
+        targets_steps = targets.reshape((self.config.batch_size, T//self.config.trial_len, self.config.trial_len, targets.shape[-1]))[:, :, steps, :]
+
+        probabilities_steps = torch.nn.functional.softmax(logits_steps, dim=-1)
+        correct = torch.argmax(probabilities_steps, dim=-1) == torch.argmax(targets_steps, dim=-1)
+
+        return correct.sum(dim=(0,1)).float() / (correct.size(0) * correct.size(1))

@@ -11,19 +11,18 @@ from tqdm import tqdm
 print("Using device: ", Conf.dev)
 
 Conf.batch_size = 504
-Conf.reward_prob = 0.8
-Conf.hidden_dim = 128
+Conf.hidden_dim = 256
 Conf.num_epochs_test = 1
 # load_dir = 'run_data_08_256_l2_1e6_l2_3e4'
-load_dir = 'run_data_orig'
+load_dir = 'run_data_new'
 # load_dir = 'run_data'
 load_dir = os.path.join(os.getcwd(), load_dir)
 print(load_dir)
-Conf.save_dir = load_dir
+Conf.save_dir = os.path.join(os.getcwd(), 'run_data_new_env')
 
 # Initialize model, curriculum, loss function and optimizer
 model = SimpleRNN(Conf)
-model.load_state_dict(torch.load(os.path.join(load_dir, 'weights_90000.pth')))
+model.load_state_dict(torch.load(os.path.join(load_dir, 'weights_5000.pth')))
 
 data_curriculum = DataCurriculum(Conf, eval=True)
 logger = LearningLogger(Conf)
