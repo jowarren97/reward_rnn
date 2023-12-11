@@ -6,12 +6,14 @@ import os
 class Conf():
     dtype = torch.float32
     dtype = torch.float32
-    dev = torch.device("cpu")
+    # dev = torch.device("cpu")
     # slower with mps for some reason
-    # if torch.backends.mps.is_available():
+    if torch.cuda.is_available():
+        dev = torch.device("cuda")
+    # elif torch.backends.mps.is_available():
     #     dev = torch.device("mps")
-    # else:
-    #     dev = torch.device("cpu")
+    else:
+        dev = torch.device("cpu")
 
     # curriculum params
     lr = 1e-4
@@ -39,7 +41,7 @@ class Conf():
     sample = False  # whether to sample action from RNN logits, or take max logit as action 
     # (maybe if sample then RNN should receive action taken?)
     weight_init = True  # whether to use weight inits on RNN
-    threshold = 5.0  # choose None to use vanilla RNN
+    threshold = None #5.0  # choose None to use vanilla RNN
     use_rnn_actions = False
     weight_regularization = 1e-6 #1e-7  # weight regularization
     activity_regularization = 3e-4 #1e-4

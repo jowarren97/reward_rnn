@@ -19,7 +19,9 @@ from copy import copy
 from random import shuffle
 import logging
 import sys
-from logger import LearningLogger, get_model_path
+from logger import LearningLogger
+from datetime import datetime
+import subprocess
 
 logger = logging.getLogger("trainer")
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -33,7 +35,8 @@ class Trainer():
         self.config = config
         self.model = model
         self.root = os.getcwd()
-        self.model_path = os.path.join(self.root, 'run_data', get_model_path())
+        self.path = get_path(self.config)
+        self.model_path = os.path.join(self.root, 'run_data', self.path)
         self.train_env, self.test_env = None, None
         # criterion = nn.BCEWithLogitsLoss()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.lr)
@@ -153,7 +156,7 @@ class Trainer():
 
         # self.on_training_start(save)
         print(type(self.train_env))
-        self.logger = LearningLogger([self, self.model, self.train_env])
+        self.logger = LearningLogger([self, self.model, self.train_env], path=self.path)
 
         for epoch in range(self.config.num_epochs):
             if self.exit:
@@ -335,3 +338,113 @@ def train_test_split(port_dim=9, train_ratio=0.8):
     return np.array(train), np.array(test), np.array(all_perms)
 
 
+def get_path(config):
+    date, time = get_current_date()
+    return os.path.join(date, get_git_commit_id(), get_model_path(config), time)
+
+def get_model_path(config):
+    path = '_'.join([   'p', str(config.reward_prob), 
+                        'lr', f'{config.lr:.0e}',
+                        'batchsize', str(config.batch_size),
+                        'h', str(config.hidden_dim), 
+                        'wreg', f'{config.weight_regularization:.0e}',
+                        'hreg', f'{config.activity_regularization:.0e}',
+                        'thresh', str(config.threshold)])
+
+    return path
+
+def get_git_commit_id():
+    try:
+        # Run the git command to get the current commit ID
+        commit_id = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip()
+        # Decode from bytes to string and get the first 7 characters
+        commit_id = commit_id.decode('utf-8')[:7]
+        return commit_id
+    except subprocess.CalledProcessError:
+        # Handle errors if the git command fails
+        print("An error occurred while trying to retrieve the Git commit ID.")
+        return None
+    
+def get_current_date():
+    # Get the current date
+    current_date = datetime.now()
+    # Format the date as a string (e.g., "YYYY-MM-DD")
+    date_string = current_date.strftime("%Y-%m-%d")
+    time_string = current_date.strftime("%H:%M")
+    return date_string, time_string
+
+
+
+"""
+def __init__(
+        self,
+        root,
+        model,
+        n_epochs,
+        batch_size,
+        lr,
+        optimizer_func=torch.optim.Adam,
+        scheduler_func=None,
+        device="cuda",
+        dtype=torch.float,
+        grad_clip_value=None,
+        save_type="SAVE_DICT",
+        id=None,
+        optimizer_kwargs={},
+        scheduler_kwargs={},
+        loader_kwargs={}):
+
+        self.root = root
+        self.model = model
+        self.n_epochs = n_epochs
+        self.batch_size = batch_size
+        self.lr = lr
+        self.optimizer_func = optimizer_func
+        self.scheduler_func = scheduler_func
+        self.device = device
+        self.dtype = dtype
+        self.grad_clip_value = grad_clip_value
+        self.save_type = save_type
+        self.optimizer_kwargs = optimizer_kwargs
+        self.scheduler_kwargs = scheduler_kwargs
+
+        # Instantiate housekeeping variables
+        self.id = str(uuid.uuid4().hex) if id is None else id
+
+        # Initialise the model
+        self.model = self.model.to(device)
+        if dtype == torch.float:
+            self.model = self.model.float()
+        elif dtype == torch.half:
+            self.model = self.model.half()
+        self.date = datetime.today().strftime("%Y-%m-%d-%H:%M:%S")
+
+        self.model_path = os.path.join(self.root, 'run_data', get_model_path())
+
+        self.optimizer = self.optimizer_func(self.model.parameters(), lr=self.lr)
+
+        # self.optimizer = self.optimizer_func(
+        #     self.model.parameters(), self.lr, **optimizer_kwargs
+        # )
+        # if self.scheduler_func is not None:
+        #     self.scheduler = scheduler_func(self.optimizer, **self.scheduler_kwargs)
+        # else:
+        #     self.scheduler = None
+
+        # # Register grad clippings
+        # if self.grad_clip_type == Trainer.GRAD_VALUE_CLIP_PRE:
+        #     for p in self.model.parameters():
+        #         p.register_hook(
+        #             lambda grad: torch.clamp(grad, -grad_clip_value, grad_clip_value)
+        #         )
+
+        self.config = config
+        self.train_env, self.test_env = None, None
+
+        self.exit = False
+
+        self.log = {"train_loss": {"data": [], "tb": True, "save": False},
+                    "test_loss" : {"data": [], "tb": True, "save": False},  
+                    "epoch_time": {"data": [], "tb": True, "save": False},
+                    "batch_time": {"data": [], "tb": True, "save": False}}
+                    """

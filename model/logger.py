@@ -1,15 +1,15 @@
 from collections.abc import Iterable
 from tensorboardX import SummaryWriter
-import subprocess
-from datetime import datetime
 import os
 
+# /Volumes/jwarren/notebooks_paper/model/summaries
+
 class LearningLogger:
-    def __init__(self, objs=()):
+    def __init__(self, objs=(), path=''):
         self.pointers = []
         self.log = dict()
         self.root = os.getcwd()
-        self.profile_path = os.path.join(self.root, 'summaries', get_current_date() + '_' + get_git_commit_id())
+        self.profile_path = os.path.join(self.root, 'summaries', path)
         self.writer = SummaryWriter(self.profile_path)
 
         self.add_pointer(objs)
@@ -47,25 +47,3 @@ class LearningLogger:
 
 def is_iterable(obj):
     return isinstance(obj, Iterable)
-
-def get_git_commit_id():
-    try:
-        # Run the git command to get the current commit ID
-        commit_id = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip()
-        # Decode from bytes to string and get the first 7 characters
-        commit_id = commit_id.decode('utf-8')[:7]
-        return commit_id
-    except subprocess.CalledProcessError:
-        # Handle errors if the git command fails
-        print("An error occurred while trying to retrieve the Git commit ID.")
-        return None
-    
-def get_current_date():
-    # Get the current date
-    current_date = datetime.now()
-    # Format the date as a string (e.g., "YYYY-MM-DD")
-    date_string = current_date.strftime("%Y-%m-%d_%H-%M")
-    return date_string
-
-def get_model_path():
-    return get_current_date() + '_' + get_git_commit_id()

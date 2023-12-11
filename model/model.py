@@ -5,12 +5,10 @@ from config import Conf
 
 def init_weights_thresholded_rnn(rnn_cell):
     nn.init.xavier_uniform_(rnn_cell.i2h.weight)
-    nn.init.xavier_uniform_(rnn_cell.h2a.weight)
     nn.init.trunc_normal_(rnn_cell.h2h.weight, mean=0.0, std=0.001)
     # nn.init.eye_(rnn_cell.h2h.weight)
     # rnn_cell.h2h.weight.data += torch.diag(torch.normal(torch.zeros(rnn_cell.h2h.weight.size(0)), 0.01))
     rnn_cell.i2h.bias.data.zero_()
-    rnn_cell.h2a.bias.data.zero_()
     rnn_cell.h2h.bias.data.zero_()
 
 def init_weights_rnn(rnn):
@@ -18,9 +16,15 @@ def init_weights_rnn(rnn):
         # if 'weight_ih' in name:  # Input-to-hidden weights
         # print(param.data)
         #     nn.init.xavier_uniform_(param.data)
-        if 'weight_hh' in name:  # Hidden-to-hidden weights
+        if 'weight' in name:
+            if 'hh' in name:  # Hidden-to-hidden weights
             # nn.init.eye_(param.data) + torch.normal(torch.zeros_like(param.data), 0.01, dtype=Conf.dtype, device=Conf.dev)
-            nn.init.trunc_normal_(param.data, mean=0.0, std=0.001)
+                nn.init.trunc_normal_(param.data, mean=0.0, std=0.001)
+                # param.data += 0.5*torch.eye(param.size(0)).to(param.device)
+            elif 'ih' in name:
+                nn.init.xavier_uniform_(param.data)
+        if 'bias' in name:
+            param.data.zero_()
 
         # elif 'bias' in name:
         #     param.data.zero_()
@@ -38,7 +42,6 @@ class ThresholdedRNNCell(nn.Module):
         self.dtype = dtype
         self.i2h = nn.Linear(input_size, hidden_size, device=device, dtype=dtype)
         self.h2h = nn.Linear(hidden_size, hidden_size, device=device, dtype=dtype)
-        self.h2a = nn.Linear(hidden_size, output_size, device=device, dtype=dtype)
         self.device = device
 
         self.hidden_init = nn.Parameter(torch.zeros((1, self.hidden_size), dtype=dtype, device=device),
@@ -72,11 +75,14 @@ class ThresholdedRNNCell(nn.Module):
 class SimpleRNN(nn.Module):
     def __init__(self, config):
         super(SimpleRNN, self).__init__()
+        print('init')
         self.device = config.dev
 
         self.log = {"hidden"        : {"data": [], "tb": False, "save": True},
                     "logits"        : {"data": [], "tb": False, "save": True},
-                    "hidden_norm"   : {"data": [], "tb": True,  "save": False}}
+                    "hidden_norm"   : {"data": [], "tb": True,  "save": False},
+                    "hidden_max_all": {"data": [], "tb": True,  "save": False},
+                    "hidden_max_mean": {"data": [], "tb": True,  "save": False}}
         
         if config.threshold is not None:
             print('Using thresholded RNN')
@@ -93,7 +99,6 @@ class SimpleRNN(nn.Module):
                 init_weights_rnn(self.rnn)
 
         self.linear = nn.Linear(config.hidden_dim, config.output_dim, device=config.dev, dtype=config.dtype)
-        self.linear = nn.Linear(config.hidden_dim, config.output_dim, device=config.dev, dtype=config.dtype)
 
     def forward(self, x, hidden=None):
         rnn_out, hidden = self.rnn(x, hidden)
@@ -101,7 +106,9 @@ class SimpleRNN(nn.Module):
 
         # self.log["hiddens"]["data"].append(rnn_out)
         # self.log["logits"]["data"].append(output)
-        self.log["hidden_norm"]["data"].append(torch.norm(hidden))
+        self.log["hidden_norm"]["data"].append(torch.norm(rnn_out))
+        self.log["hidden_max_mean"]["data"].append(torch.mean(torch.amax(rnn_out, dim=(0,1))))
+        self.log["hidden_max_all"]["data"].append(torch.max(rnn_out))
 
         return output, hidden, rnn_out
     
