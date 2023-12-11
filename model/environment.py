@@ -1,5 +1,5 @@
 import torch
-from bayes_new import BayesAgent
+from bayes import BayesAgent
 from random import shuffle
 from itertools import permutations
 import numpy as np

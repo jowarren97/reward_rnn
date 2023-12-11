@@ -7,12 +7,9 @@
 
 import torch
 import numpy as np
-import pickle
 import os
-import h5py
 from time import time
 
-import pandas as pd
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -22,7 +19,7 @@ from copy import copy
 from random import shuffle
 import logging
 import sys
-from logger_new2 import LearningLogger, get_model_path
+from logger import LearningLogger, get_model_path
 
 logger = logging.getLogger("trainer")
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -194,14 +191,14 @@ class Trainer():
         test_loss = self.loss(hiddens, logits, target_tensor)
         self.log["test_loss"]["data"].append(test_loss)
 
-        accuracies, steps = self.get_all_accuracies(logits, targets)
+        accuracies, steps = self.get_all_accuracies(logits, target_tensor)
         
         for i, (key, arr) in enumerate(accuracies.items()):
             for val, step in zip(arr, steps[i]):
                 # print(key, step, val.numpy())
                 string = f'Accuracy/{key}_{step}'
                 # print(string)
-                self.logger.writer.add_scalar(string, val.numpy(), epoch)
+                self.logger.writer.add_scalar(string, val, epoch)
 
         self.logger.get_logs()
         self.logger.to_tensorboard(epoch)
