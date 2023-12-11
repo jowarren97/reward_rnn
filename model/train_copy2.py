@@ -18,8 +18,6 @@ from curriculum import check_train_test_split, train_test_split
 from model import SimpleRNN
 from config import Conf
 from trainer import ReversalTrainer
-from logger_new import LearningLogger
-from time import time
 import os
 
 print("Using device: ", Conf.dev)
@@ -33,7 +31,6 @@ load_dir = os.path.join(os.getcwd(), Conf.save_dir)
 model = SimpleRNN(Conf)
 # model.load_state_dict(torch.load(os.path.join(load_dir, 'weights_4000.pth')))
 
-logger = LearningLogger(Conf)
-trainer = ReversalTrainer(model, Conf, logger)
+trainer = ReversalTrainer(model, Conf)
 
 trainer.train()

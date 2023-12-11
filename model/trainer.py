@@ -20,37 +20,59 @@ from environment import ReversalEnvironment
 from itertools import permutations
 from copy import copy
 from random import shuffle
+import logging
+import sys
+from logger_new2 import LearningLogger, get_model_path
+
+logger = logging.getLogger("trainer")
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 class Trainer():
     SAVE_OBJECT = "SAVE_OBJECT"
     SAVE_DICT = "SAVE_DICT"
 
-    def __init__(self, model, config, logger=None):
+    def __init__(self, model, config):
         self.exit = False
         self.config = config
         self.model = model
+        self.root = os.getcwd()
+        self.model_path = os.path.join(self.root, 'run_data', get_model_path())
         self.train_env, self.test_env = None, None
         # criterion = nn.BCEWithLogitsLoss()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.lr)
-        self.logger = logger
+
+        self.log = {"train_loss": {"data": [], "tb": True, "save": False},
+                    "test_loss" : {"data": [], "tb": True, "save": False},  
+                    "epoch_time": {"data": [], "tb": True, "save": False},
+                    "batch_time": {"data": [], "tb": True, "save": False}}
+        
+    def get_log(self):
+        return self.log
+    
+    def reset_log(self):
+        for key in self.log.keys():
+            self.log[key]['data'] = []
 
     def get_envs(self):
         return self.get_train_env(), self.get_test_env()
 
-    def get_train_env():
+    def get_train_env(self):
         raise NotImplementedError()
     
-    def get_test_env():
+    def get_test_env(self):
         raise NotImplementedError()
     
-    def train_for_single_epoch(model, logger=None):
+    def train_for_single_epoch(self):
         raise NotImplementedError()
     
-    def save_model(self):
+    def save_model(self, epoch):
+        if not os.path.exists(self.model_path):
+            os.makedirs(self.model_path)
+
         if self.config.save_type == Trainer.SAVE_OBJECT:
-            torch.save(self.model, self.model_path)
+            torch.save(self.model, os.path.join(self.model_path, str(epoch)))
         elif self.config.save_type == Trainer.SAVE_DICT:
-            torch.save(self.model.state_dict(), self.model_path)
+            torch.save(self.model.state_dict(), os.path.join(self.model_path, 'weights_' + str(epoch) + '.pth'))
 
     def save_model_log(self):
         raise NotImplementedError()
@@ -133,6 +155,8 @@ class Trainer():
             os.makedirs(os.path.join(self.root, self.id))
 
         # self.on_training_start(save)
+        print(type(self.train_env))
+        self.logger = LearningLogger([self, self.model, self.train_env])
 
         for epoch in range(self.config.num_epochs):
             if self.exit:
@@ -142,24 +166,24 @@ class Trainer():
             epoch_loss = self.train_for_single_epoch()
             end_time = time()
             epoch_duration = end_time - start_time
-            self.logger.writer.add_scalar('Loss/train', epoch_loss, epoch)
 
-            # logger.info(
-            #     f"Completed epoch {epoch} with loss {epoch_loss} in {epoch_duration:.4f}s"
-            # )
-            # self.log["train_loss"].append(epoch_loss)
-            # self.log["duration"].append(epoch_duration)
+            logger.info(
+                f"Completed epoch {epoch} with loss {epoch_loss} in {epoch_duration:.4f}s"
+            )
+            self.log["train_loss"]["data"].append(epoch_loss)
+            self.log["epoch_time"]["data"].append(epoch_duration)
+            self.log["batch_time"]["data"].append(epoch_duration / self.config.n_batches)
 
-            self.on_epoch_complete(epoch, save=False)
+            save = epoch % self.config.save_model_interval == 0
+            self.on_epoch_complete(epoch, save)
 
         self.on_training_complete(save)
 
     def on_epoch_complete(self, epoch, save):
         if save:
-            self.save_model_log()
+            self.save_model(epoch)
 
         hidden = None
-        self.logger.reset()
         with torch.no_grad():
             inputs, targets, groundtruths = self.test_env.get_batch(self.config.num_trials_test, dropout=0.0)
             # Convert data to tensors
@@ -167,32 +191,77 @@ class Trainer():
             target_tensor = targets.to(dtype=self.config.dtype, device=self.config.dev)
             logits, hidden, hiddens = self.model(data_tensor, hidden)
 
-        # # store data in logger for later computation of accuracies
-        if self.logger is not None:
-            self.logger.log(logits.cpu().detach(), target_tensor.cpu().detach(), data_tensor.cpu().detach(), 
-                        groundtruths.cpu().detach(), self.train_env.optimal_agent.p_A_high.cpu().detach(), hiddens.cpu().detach())
+        test_loss = self.loss(hiddens, logits, target_tensor)
+        self.log["test_loss"]["data"].append(test_loss)
 
-        accuracies, steps = self.logger.get_all_accuracies(logits, targets)
+        accuracies, steps = self.get_all_accuracies(logits, targets)
         
         for i, (key, arr) in enumerate(accuracies.items()):
             for val, step in zip(arr, steps[i]):
-                print(key, step, val.numpy())
+                # print(key, step, val.numpy())
                 string = f'Accuracy/{key}_{step}'
-                print(string)
+                # print(string)
                 self.logger.writer.add_scalar(string, val.numpy(), epoch)
 
-        loss = self.loss(hiddens, logits, target_tensor)
-        print(f"Loss:\t\t\t{loss.item():.4f}")
-        self.logger.get_data()
-        self.logger.print()
+        self.logger.get_logs()
+        self.logger.to_tensorboard(epoch)
+        self.logger.reset_logs()
             
         return
+    
+    def get_all_accuracies(self, logits, targets):
+        splits = ['x', 'r', 'a']
+        # steps_split = [[self.config.init_step-1, self.config.a_step-1, self.config.b_step-1],
+        #                 [self.config.r_step-1],
+        #                 [self.config.init_choice_step, self.config.ab_choice_step]]
+        steps_split = [[i for i in range(self.config.trial_len)] for j in range(3)]
+        
+        dim_splits = [self.config.x_dim, self.config.r_dim, self.config.a_dim]
+        logits_split = torch.split(logits, dim_splits, dim=-1)
+        targets_split = torch.split(targets, dim_splits, dim=-1)
+
+        accuracies = dict()
+        for split, steps, logit, target in zip(splits, steps_split, logits_split, targets_split):
+            accuracies[split] = self.get_accuracy_steps(logit, target, steps)
+
+        # for i, (key, arr) in enumerate(accuracies.items()):
+        #     for val, step in zip(arr, steps_split[i]):
+        #         print(key, step, val.numpy())
+        #         string = f'Accuracy/{key}_{step}'
+        #         print(string)
+
+        a_trial_stages = ['nothing' for _ in range(self.config.trial_len)]
+        a_trial_stages[self.config.init_choice_step] = 'init'
+        a_trial_stages[self.config.ab_choice_step] = 'choice'
+
+        x_trial_stages = ['nothing' for _ in range(self.config.trial_len)]
+        x_trial_stages[self.config.init_step] = 'init'
+        x_trial_stages[self.config.r_step] = 'reward'
+        x_trial_stages[self.config.a_step] = 'a'
+        x_trial_stages[self.config.b_step] = 'b'
+        print('Accuracy each step (a):\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(accuracies['a'], a_trial_stages)]))
+        print('Accuracy each step (x):\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(accuracies['x'], x_trial_stages)]))
+
+        return accuracies, steps_split
+        
+    def get_accuracy_steps(self, logits, targets, steps=None):
+        if steps is None:
+            steps = [i for i in range(self.config.trial_len)]
+
+        T = logits.shape[self.config.t_ax]
+        logits_steps = logits.reshape((self.config.batch_size, T//self.config.trial_len, self.config.trial_len, logits.shape[-1]))[:, :, steps, :]
+        targets_steps = targets.reshape((self.config.batch_size, T//self.config.trial_len, self.config.trial_len, targets.shape[-1]))[:, :, steps, :]
+
+        probabilities_steps = torch.nn.functional.softmax(logits_steps, dim=-1)
+        correct = torch.argmax(probabilities_steps, dim=-1) == torch.argmax(targets_steps, dim=-1)
+
+        return 100.0 * correct.sum(dim=(0,1)).float() / (correct.size(0) * correct.size(1))
 
 
 
 class ReversalTrainer(Trainer):
-    def __init__(self, model, config, logger=None):
-        super().__init__(model, config, logger)
+    def __init__(self, model, config):
+        super().__init__(model, config)
         self.criterion = torch.nn.CrossEntropyLoss()
         self.train_layouts, self.test_layouts, self.all_layouts = train_test_split()
         self.train_env, self.test_env = self.get_envs()
@@ -269,11 +338,3 @@ def train_test_split(port_dim=9, train_ratio=0.8):
     return np.array(train), np.array(test), np.array(all_perms)
 
 
-def accuracy(self, logits, targets):
-    probabilities = torch.nn.functional.softmax(logits, dim=-1)
-    correct = torch.argmax(probabilities, dim=-1) == torch.argmax(targets, dim=-1)
-    accuracy = correct_predictions.sum().float() / targets.size(0)
-    
-    return accuracy.item()
-
-    

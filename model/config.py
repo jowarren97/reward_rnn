@@ -74,3 +74,4 @@ class Conf():
 
     save_type = "SAVE_DICT"  # "SAVE_OBJECT"
     n_batches = 50
+    save_model_interval = 20

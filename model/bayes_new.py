@@ -38,6 +38,8 @@ class BayesAgent:
         # new_belief = np.where(p_data>0, (p_data_given_A_high * self.p_A_high / p_data), 1-self.p_A_high)
         # self.p_A_high = self.config.alpha * new_belief + (1 - self.config.alpha) * ((self.p_A_high + 0.5) / 2)
 
+        return self.p_A_high
+
 
     def switch(self, switch_mask, a_vector, b_vector):
         switch_mask = torch.unsqueeze(switch_mask, dim=-1)

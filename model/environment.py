@@ -23,6 +23,10 @@ class Environment(object):
         self.config = config
         self.dev = self.config.env_dev
 
+        self.log = {'inputs'        : {"data": [], "tb": False, "save": True},
+                    'targets'       : {"data": [], "tb": False, "save": True},
+                    'groundtruths'  : {"data": [], "tb": False, "save": True}}
+        
     def get_batch(self, num_trials=1):
         """
         Get a batch of data consisting of specified number of trials.
@@ -71,6 +75,13 @@ class Environment(object):
     def reset(self):
         """Abstract method to reset the environment."""
         raise NotImplementedError
+    
+    def reset_log(self):
+        for key in self.log.keys():
+            self.log[key]['data'] = []
+
+    def get_log(self):
+        return self.log
 
     def split_data(self, data):
         """
@@ -171,6 +182,9 @@ class ReversalEnvironment(Environment):
         # thresholds for reversals and block switches
         self.max_trials_since_reversal_jittered = self.config.max_trials_since_reversal + noise
 
+        self.log = {**self.log, 
+                    'p_A_high': {"data": [], "tb": False, "save": True}}
+
     def get_batch(self, num_trials, dropout=0.5):
         no_stim = torch.zeros((self.config.batch_size, self.config.x_dim), 
                                     dtype=self.config.dtype, device=self.dev)
@@ -184,42 +198,9 @@ class ReversalEnvironment(Environment):
                                 dtype=self.config.dtype, device=self.dev)
         if self.config.no_action_token: no_action[:, -1] = 1
 
-        x_sequence, r_sequence, a_sequence, a_gt_sequence = [], [], [], []
+        x_sequence, r_sequence, a_sequence, a_gt_sequence, p_A_sequence = [], [], [], [], []
 
         self.reset()
-
-        # for trial in range(num_trials):
-        #     for step in range(self.config.trial_len):
-        #         x, r, a, a_gt = no_stim, no_reward, no_action, no_action
-        #         # stimulus, reward, action
-        #         # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 3, 4, 2, 4
-        #         if step == self.config.r_step:
-        #             r = torch.nn.functional.one_hot(self.last_reward.to(torch.int64), num_classes=self.config.r_dim)
-        #             self.optimal_agent.update_beliefs(self.last_reward)
-
-        #         if step == self.config.init_step:
-        #             x = self.init_vector
-        #         if step == self.config.a_step:
-        #             x = self.a_vector
-        #         if step == self.config.b_step:
-        #             x = self.b_vector
-
-        #         if step == self.config.init_choice_step:
-        #             a = torch.nn.functional.pad(self.init_vector, (0, self.config.a_dim-self.init_vector.shape[-1]), mode='constant', value=0)
-        #             a_gt = a
-        #         if step == self.config.ab_choice_step:
-        #             ab_choice = self.optimal_agent.choose_action()
-        #             a = torch.nn.functional.pad(ab_choice, (0, self.config.a_dim-ab_choice.shape[-1]), mode='constant', value=0)
-        #             a_gt = self.groundtruth_choice()
-        #             self.compute_reward(a, a_gt)
-
-        #         x_sequence.append(x)
-        #         r_sequence.append(r)
-        #         a_sequence.append(a)
-        #         a_gt_sequence.append(a_gt)
-            
-        #     self.trials_since_reversal += 1
-        #     self.check_and_switch_block()
 
         for step in range(self.config.trial_len * num_trials):
             x, r, a, a_gt = no_stim, no_reward, no_action, no_action
@@ -227,7 +208,7 @@ class ReversalEnvironment(Environment):
             # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 3, 4, 2, 4
             if (step - self.config.r_step) % self.config.trial_len == 0:
                 r = torch.nn.functional.one_hot(torch.logical_not(self.last_reward).to(torch.int64), num_classes=self.config.r_dim)
-                self.optimal_agent.update_beliefs(self.last_reward)
+                p_A = self.optimal_agent.update_beliefs(self.last_reward)
 
             if (step - self.config.init_step) % self.config.trial_len == 0:
                 x = self.init_vector
@@ -249,13 +230,13 @@ class ReversalEnvironment(Environment):
             r_sequence.append(r)
             a_sequence.append(a)
             a_gt_sequence.append(a_gt)
+            p_A_sequence.append(p_A)
             
             if (step - 1) % self.config.trial_len == 0:
                 self.trials_since_reversal += 1
                 self.check_and_switch_block()
 
-
-        x, r, a, a_gt = stack_tensors([x_sequence, r_sequence, a_sequence, a_gt_sequence], axis=self.config.t_ax)
+        x, r, a, a_gt, p_A = stack_tensors([x_sequence, r_sequence, a_sequence, a_gt_sequence, p_A_sequence], axis=self.config.t_ax)
         x_shift, r_shift, a_shift , a_gt_shift, = shift_tensors([x, r, a, a_gt], axis=self.config.t_ax, shifts=[-1, -1, 1, 1])
 
         x_mask = [1 if i not in [self.config.init_step, self.config.a_step, self.config.b_step] else 1-dropout for i in range(self.config.trial_len)]
@@ -265,6 +246,10 @@ class ReversalEnvironment(Environment):
         targets = torch.cat([x_shift, r_shift, a], dim=-1)
         groundtruths = torch.cat([x_shift, r_shift, a_gt], dim=-1)
         # groundtruths = torch.cat([x_shift, r_shift, a], dim=-1)
+        self.log['inputs']['data'].append(inputs)
+        self.log['targets']['data'].append(targets)
+        self.log['groundtruths']['data'].append(groundtruths)
+        self.log['p_A_high']['data'].append(p_A)
 
         return inputs, targets, groundtruths
 
@@ -285,66 +270,6 @@ class ReversalEnvironment(Environment):
         self.post_trial_update(groundtruths)
 
         return inputs, targets, groundtruths
-
-    def get_trial_inputs(self):
-        """
-        Get trial inputs specific to the reversal environment.
-
-        Returns:
-            torch.Tensor: Concatenated tensor of x, r, and a sequences.
-        """
-        x_sequence = self.get_x_sequence()
-        r_sequence = self.get_r_sequence()
-        # apply a shift of the actions rightwards by 1
-        ab_choice = self.last_ab_choice
-        a_sequence = self.get_a_sequence(ab_choice)
-        a_sequence = torch.roll(a_sequence, 1, dims=self.config.t_ax)
-
-        return torch.cat([x_sequence, r_sequence, a_sequence], -1)
-    
-    def get_trial_targets(self):
-        """
-        Get trial targets specific to the reversal environment.
-
-        Returns:
-            torch.Tensor: Concatenated tensor of x, r, and a sequences.
-        """
-        x_sequence = self.get_x_sequence()
-        r_sequence = self.get_r_sequence()
-
-        ab_choice = self.optimal_agent.choose_action()
-        a_sequence = self.get_a_sequence(ab_choice)
-
-        if self.config.predict_x:
-            return torch.cat([x_sequence, r_sequence, a_sequence], -1)
-        else:
-            return a_sequence
-    
-    def get_trial_groundtruths(self):
-        x_sequence = self.get_x_sequence()
-        r_sequence = self.get_r_sequence()
-
-        # two_hot_indices = np.where(self.a_b_vector == 1)[1].reshape(self.config.batch_size, 2)
-        # gathered = np.take_along_axis(two_hot_indices, self.selected_two_hot_index, axis=1)
-        # gathered = gathered.flatten()
-        # ab_choice = np.eye(self.config.a_dim)[gathered.astype(int)]  # This creates a one-hot encoded array of shape (64, 10)
-        
-        # Assuming self.a_b_vector is a PyTorch tensor
-        two_hot_indices = (self.a_b_vector == 1).nonzero(as_tuple=True)[1].view(self.config.batch_size, 2)
-
-        # Ensure that self.selected_two_hot_index is a PyTorch tensor
-        # gathered = two_hot_indices.gather(1, self.selected_two_hot_index.unsqueeze(-1)).squeeze(-1)
-        gathered = two_hot_indices.gather(1, self.selected_two_hot_index).squeeze(-1)
-
-        # One-hot encoding in PyTorch
-        ab_choice = torch.nn.functional.one_hot(gathered, num_classes=self.config.a_dim)
-
-        a_sequence = self.get_a_sequence(ab_choice)
-
-        if self.config.predict_x:
-            return torch.cat([x_sequence, r_sequence, a_sequence], -1)
-        else:
-            return a_sequence
     
     def post_trial_update(self, groundtruths=None):
         if groundtruths is not None:
@@ -386,48 +311,6 @@ class ReversalEnvironment(Environment):
         reward_probabilistic = torch.where(trial_correct, ps < self.config.reward_prob, ps > self.config.reward_prob)
 
         self.last_reward = reward_probabilistic
-
-    
-    def get_x_sequence(self):
-        """Abstract method to get x sequence."""
-        zero_x_vector = torch.zeros((self.config.batch_size, self.config.x_dim), 
-                                    dtype=self.config.dtype, device=self.dev)
-        
-        x_sequence_list = [zero_x_vector for _ in range(self.config.trial_len)]
-        x_sequence_list[self.config.init_step] = self.init_vector
-        x_sequence_list[self.config.a_step] = self.a_vector
-        x_sequence_list[self.config.b_step] = self.b_vector
-
-        return torch.stack(x_sequence_list, axis=self.config.t_ax)
-       
-    def get_r_sequence(self):
-        """Abstract method to get r sequence."""
-        zero_r_vector = torch.zeros((self.config.batch_size, self.config.r_dim), 
-                                     dtype=self.config.dtype, device=self.dev)
-        
-        r_vector = torch.nn.functional.one_hot(self.last_reward.to(torch.int64), num_classes=self.config.r_dim)
-
-        r_sequence_list = [zero_r_vector for _ in range(self.config.trial_len)]
-        r_sequence_list[self.config.r_step] = r_vector
-
-        return torch.stack(r_sequence_list, axis=self.config.t_ax)
-    
-    def get_a_sequence(self, ab_choice):
-        """Abstract method to get a sequence."""
-        no_action = torch.zeros((self.config.batch_size, self.config.a_dim), 
-                                     dtype=self.config.dtype, device=self.dev)
-        if self.config.no_action_token: no_action[:, -1] = 1
-
-        init_action = torch.nn.functional.pad(self.init_vector, (0, self.config.a_dim-self.init_vector.shape[-1]), mode='constant', value=0)
-        ab_choice = torch.nn.functional.pad(ab_choice, (0, self.config.a_dim-ab_choice.shape[-1]), mode='constant', value=0)
-        assert init_action.shape[-1] == ab_choice.shape[-1] == no_action.shape[-1] == self.config.a_dim
-
-        a_sequence_list = [no_action for _ in range(self.config.trial_len)]
-
-        a_sequence_list[self.config.ab_choice_step] = ab_choice
-        a_sequence_list[self.config.init_choice_step] = init_action
-
-        return torch.stack(a_sequence_list, axis=self.config.t_ax)
     
     def check_and_switch_block(self):
         """Check elapsed trials since reversal and reverse if required. After, check total number of reversals and switch block if required"""
@@ -495,6 +378,8 @@ class ReversalEnvironment(Environment):
 
         switch_mask = torch.ones((self.config.batch_size,), dtype=torch.bool, device=self.dev)
         self.optimal_agent.switch(switch_mask, self.a_vector, self.b_vector)
+
+        self.reset_log()
 
     def generate_new_port_layout(self):
         """Generate random one-hot and two-hot vectors for batches."""

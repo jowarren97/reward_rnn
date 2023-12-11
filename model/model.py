@@ -73,6 +73,10 @@ class SimpleRNN(nn.Module):
     def __init__(self, config):
         super(SimpleRNN, self).__init__()
         self.device = config.dev
+
+        self.log = {"hidden"        : {"data": [], "tb": False, "save": True},
+                    "logits"        : {"data": [], "tb": False, "save": True},
+                    "hidden_norm"   : {"data": [], "tb": True,  "save": False}}
         
         if config.threshold is not None:
             print('Using thresholded RNN')
@@ -95,7 +99,18 @@ class SimpleRNN(nn.Module):
         rnn_out, hidden = self.rnn(x, hidden)
         output = self.linear(rnn_out)
 
+        # self.log["hiddens"]["data"].append(rnn_out)
+        # self.log["logits"]["data"].append(output)
+        self.log["hidden_norm"]["data"].append(torch.norm(hidden))
+
         return output, hidden, rnn_out
+    
+    def get_log(self):
+        return self.log
+    
+    def reset_log(self):
+        for key in self.log.keys():
+            self.log[key]['data'] = []
 
 # class SimpleRNN(nn.Module):
 #     def __init__(self, input_size, hidden_size, output_size, num_layers=1, device=Conf.dev):
