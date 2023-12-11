@@ -75,7 +75,6 @@ class ThresholdedRNNCell(nn.Module):
 class SimpleRNN(nn.Module):
     def __init__(self, config):
         super(SimpleRNN, self).__init__()
-        print('init')
         self.device = config.dev
 
         self.log = {"hidden"        : {"data": [], "tb": False, "save": True},

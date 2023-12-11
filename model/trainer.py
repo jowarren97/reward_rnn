@@ -36,6 +36,7 @@ class Trainer():
         self.model = model
         self.root = os.getcwd()
         self.path = get_path(self.config)
+        print(self.path)
         self.model_path = os.path.join(self.root, 'run_data', self.path)
         self.train_env, self.test_env = None, None
         # criterion = nn.BCEWithLogitsLoss()
@@ -155,7 +156,6 @@ class Trainer():
             os.makedirs(os.path.join(self.root, self.id))
 
         # self.on_training_start(save)
-        print(type(self.train_env))
         self.logger = LearningLogger([self, self.model, self.train_env], path=self.path)
 
         for epoch in range(self.config.num_epochs):
