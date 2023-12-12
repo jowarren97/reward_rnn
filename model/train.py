@@ -17,6 +17,7 @@ from model import SimpleRNN
 from config import Conf
 from trainer import ReversalTrainer
 import os
+import torch
 
 print("Using device: ", Conf.dev)
 
@@ -29,6 +30,16 @@ load_dir = os.path.join(os.getcwd(), Conf.save_dir)
 model = SimpleRNN(Conf)
 # model.load_state_dict(torch.load(os.path.join(load_dir, 'weights_4000.pth')))
 
-trainer = ReversalTrainer(model, Conf)
+optimizer_func = torch.optim.AdamW
+optimizer_kwargs = {"lr": Conf.lr, "weight_decay": Conf.weight_regularization}
+scheduler_func = torch.optim.lr_scheduler.LinearLR
+scheduler_kwargs = {"start_factor": 1.0, "end_factor": 0.1, "total_iters": Conf.decay_epochs}
+
+trainer = ReversalTrainer(model, 
+                          Conf, 
+                          optimizer_func, 
+                          scheduler_func, 
+                          optimizer_kwargs=optimizer_kwargs, 
+                          scheduler_kwargs=scheduler_kwargs)
 
 trainer.train()

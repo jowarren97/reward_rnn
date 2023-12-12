@@ -6,7 +6,7 @@
 #SBATCH -N 1
 #SBATCH -c 1
 #SBATCH --mem=4G
-#SBATCH -t 3:00:00
+#SBATCH -t 2:00:00
 #SBATCH -o ./slurm/slurm.%j.out
 #SBATCH -e ./slurm/slurm.%j.err
 #

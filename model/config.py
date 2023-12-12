@@ -17,7 +17,7 @@ class Conf():
 
     # curriculum params
     lr = 1e-4
-    num_epochs = 100000
+    num_epochs = 10000
     num_trials = 50  # per epoch; timesteps = num_trials * 4  (reward, delay, init, choice)
     num_trials_test = 1000
     num_epochs_test = 10
@@ -76,4 +76,10 @@ class Conf():
 
     save_type = "SAVE_DICT"  # "SAVE_OBJECT"
     n_batches = 50
-    save_model_interval = 20
+    save_model_interval = 50
+    init_hh_weight_gain = 0.5
+
+    start_lr = 1e-4
+    end_lr = 1e-5
+    decay_epochs = 4000
+    opt = 'AdamW'

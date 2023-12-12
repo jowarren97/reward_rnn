@@ -30,35 +30,102 @@ class Trainer():
     SAVE_OBJECT = "SAVE_OBJECT"
     SAVE_DICT = "SAVE_DICT"
 
+    def __init__(
+            self,
+            root,
+            model,
+            n_epochs,
+            n_batches,
+            batch_size,
+            lr,
+            optimizer_func=torch.optim.Adam,
+            scheduler_func=None,
+            device="cuda",
+            dtype=torch.float,
+            grad_clip_value=None,
+            save_type="SAVE_DICT",
+            id=None,
+            optimizer_kwargs={},
+            scheduler_kwargs={},
+            loader_kwargs={}):
 
-    def __init__(self, model, config, optimizer_func, scheduler_func=None, optimizer_kwargs={}, scheduler_kwargs={}):
-        self.exit = False
-        self.config = config
-        self.model = model
-        self.root = os.getcwd()
-        self.path = get_path(self.config)
-        print(self.path)
-        self.model_path = os.path.join(self.root, 'run_data', self.path)
-        self.train_env, self.test_env = None, None
-        # criterion = nn.BCEWithLogitsLoss()
-        # self.scheduler = Scheduler(start_lr=config.start_lr, end_lr=config.end_lr, decay_epochs=config.decay_epochs)
-        # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.start_lr)
-        self.scheduler_func = scheduler_func
-        self.optimizer_func = optimizer_func
-        self.optimizer_kwargs = optimizer_kwargs
-        self.scheduler_kwargs = scheduler_kwargs
+            self.root = root
+            self.model = model
+            self.n_epochs = n_epochs
+            self.batch_size = batch_size
+            self.lr = lr
+            self.optimizer_func = optimizer_func
+            self.scheduler_func = scheduler_func
+            self.device = device
+            self.dtype = dtype
+            self.grad_clip_value = grad_clip_value
+            self.save_type = save_type
+            self.optimizer_kwargs = optimizer_kwargs
+            self.scheduler_kwargs = scheduler_kwargs
 
-        self.optimizer = optimizer_func(self.model.parameters(), **self.optimizer_kwargs)
-        if self.scheduler_func is not None:
-            self.scheduler = scheduler_func(self.optimizer, **self.scheduler_kwargs)
-        else:
-            self.scheduler = None
+            # Instantiate housekeeping variables
+            # self.id = str(uuid.uuid4().hex) if id is None else id
 
-        self.log = {"train_loss": {"data": [], "tb": True, "save": False},
-                    "test_loss" : {"data": [], "tb": True, "save": False},  
-                    "epoch_time": {"data": [], "tb": True, "save": False},
-                    "batch_time": {"data": [], "tb": True, "save": False},
-                    "lr"        : {"data": [], "tb": True, "save": False}}
+            # Initialise the model
+            self.model = self.model.to(device)
+            if dtype == torch.float:
+                self.model = self.model.float()
+            elif dtype == torch.half:
+                self.model = self.model.half()
+            self.date = datetime.today().strftime("%Y-%m-%d-%H:%M:%S")
+
+            self.model_path = os.path.join(self.root, 'run_data', get_model_path())
+
+            self.optimizer = self.optimizer_func(
+                self.model.parameters(), self.lr, **optimizer_kwargs
+            )
+            if self.scheduler_func is not None:
+                self.scheduler = scheduler_func(self.optimizer, **self.scheduler_kwargs)
+            else:
+                self.scheduler = None
+
+            # # Register grad clippings
+            # if self.grad_clip_type == Trainer.GRAD_VALUE_CLIP_PRE:
+            #     for p in self.model.parameters():
+            #         p.register_hook(
+            #             lambda grad: torch.clamp(grad, -grad_clip_value, grad_clip_value)
+            #         )
+            self.log = {"train_loss": {"data": [], "tb": True, "save": False},
+                "test_loss" : {"data": [], "tb": True, "save": False},  
+                "epoch_time": {"data": [], "tb": True, "save": False},
+                "batch_time": {"data": [], "tb": True, "save": False},
+                "lr"        : {"data": [], "tb": True, "save": False}}
+
+            self.exit = False
+
+    # def __init__(self, model, config, optimizer_func, scheduler_func=None, optimizer_kwargs={}, scheduler_kwargs={}):
+    #     self.exit = False
+    #     self.config = config
+    #     self.model = model
+    #     self.root = os.getcwd()
+    #     self.path = get_path(self.config)
+    #     print(self.path)
+    #     self.model_path = os.path.join(self.root, 'run_data', self.path)
+    #     self.train_env, self.test_env = None, None
+    #     # criterion = nn.BCEWithLogitsLoss()
+    #     # self.scheduler = Scheduler(start_lr=config.start_lr, end_lr=config.end_lr, decay_epochs=config.decay_epochs)
+    #     # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.start_lr)
+    #     self.scheduler_func = scheduler_func
+    #     self.optimizer_func = optimizer_func
+    #     self.optimizer_kwargs = optimizer_kwargs
+    #     self.scheduler_kwargs = scheduler_kwargs
+
+    #     self.optimizer = optimizer_func(self.model.parameters(), **self.optimizer_kwargs)
+    #     if self.scheduler_func is not None:
+    #         self.scheduler = scheduler_func(self.optimizer, **self.scheduler_kwargs)
+    #     else:
+    #         self.scheduler = None
+
+    #     self.log = {"train_loss": {"data": [], "tb": True, "save": False},
+    #                 "test_loss" : {"data": [], "tb": True, "save": False},  
+    #                 "epoch_time": {"data": [], "tb": True, "save": False},
+    #                 "batch_time": {"data": [], "tb": True, "save": False},
+    #                 "lr"        : {"data": [], "tb": True, "save": False}}
         
     def get_log(self):
         return self.log
@@ -76,13 +143,16 @@ class Trainer():
     def get_test_env(self):
         raise NotImplementedError()
     
+    def train_for_single_epoch(self):
+        raise NotImplementedError()
+    
     def save_model(self, epoch):
         if not os.path.exists(self.model_path):
             os.makedirs(self.model_path)
 
-        if self.config.save_type == Trainer.SAVE_OBJECT:
+        if self.save_type == Trainer.SAVE_OBJECT:
             torch.save(self.model, os.path.join(self.model_path, str(epoch)))
-        elif self.config.save_type == Trainer.SAVE_DICT:
+        elif self.save_type == Trainer.SAVE_DICT:
             torch.save(self.model.state_dict(), os.path.join(self.model_path, 'weights_' + str(epoch) + '.pth'))
 
     def save_model_log(self):
@@ -92,13 +162,13 @@ class Trainer():
         raise NotImplementedError()
     
     def weight_loss(self, type='l2'):
-        reg = torch.tensor(0.).to(self.config.dev)
+        reg = torch.tensor(0.).to(self.device)
         for param in self.model.parameters():
             reg += torch.norm(param, p=1 if type=='l1' else 2)
         return reg
     
     def activity_loss(self, hiddens, type='l2'):
-        reg = torch.tensor(0.).to(self.config.dev)
+        reg = torch.tensor(0.).to(self.device)
         reg = torch.norm(hiddens, p=1 if type=='l1' else 2)
         return reg
     
@@ -135,15 +205,15 @@ class Trainer():
     def train_for_single_epoch(self):
         epoch_loss = 0
         # Get the initial sequence for the epoch
-        for batch_id in range(self.config.n_batches):
+        for batch_id in range(self.n_batches):
             hidden = None
             self.optimizer.zero_grad()
 
             with torch.no_grad():
                 inputs, targets, _ = self.train_env.get_batch(self.config.num_trials, dropout=0.0)
                 # Convert data to tensors
-                data_tensor = inputs.to(dtype=self.config.dtype, device=self.config.dev)
-                target_tensor = targets.to(dtype=self.config.dtype, device=self.config.dev)
+                data_tensor = inputs.to(dtype=self.dtype, device=self.device)
+                target_tensor = targets.to(dtype=self.dtype, device=self.device)
 
             logits, hidden, hiddens = self.model(data_tensor, hidden)
 
@@ -172,7 +242,7 @@ class Trainer():
         # self.on_training_start(save)
         self.logger = LearningLogger([self, self.model, self.train_env], path=self.path)
 
-        for epoch in range(self.config.num_epochs):
+        for epoch in range(self.n_epochs):
             if self.exit:
                 break
             # Train the model
@@ -181,14 +251,14 @@ class Trainer():
             end_time = time()
             epoch_duration = end_time - start_time
 
-            if self.scheduler is not None: self.scheduler.step()
+            self.scheduler.step()
 
             logger.info(
                 f"Completed epoch {epoch} with loss {epoch_loss} in {epoch_duration:.4f}s"
             )
             self.log["train_loss"]["data"].append(epoch_loss)
             self.log["epoch_time"]["data"].append(epoch_duration)
-            self.log["batch_time"]["data"].append(epoch_duration / self.config.n_batches)
+            self.log["batch_time"]["data"].append(epoch_duration / self.n_batches)
             self.log["lr"]["data"].append(self.scheduler.get_last_lr())
 
             save = epoch % self.config.save_model_interval == 0
@@ -204,8 +274,8 @@ class Trainer():
         with torch.no_grad():
             inputs, targets, groundtruths = self.test_env.get_batch(self.config.num_trials_test, dropout=0.0)
             # Convert data to tensors
-            data_tensor = inputs.to(dtype=self.config.dtype, device=self.config.dev)
-            target_tensor = targets.to(dtype=self.config.dtype, device=self.config.dev)
+            data_tensor = inputs.to(dtype=self.dtype, device=self.device)
+            target_tensor = targets.to(dtype=self.dtype, device=self.device)
             logits, hidden, hiddens = self.model(data_tensor, hidden)
 
         test_loss = self.loss(hiddens, logits, target_tensor)
@@ -266,8 +336,8 @@ class Trainer():
             steps = [i for i in range(self.config.trial_len)]
 
         T = logits.shape[self.config.t_ax]
-        logits_steps = logits.reshape((self.config.batch_size, T//self.config.trial_len, self.config.trial_len, logits.shape[-1]))[:, :, steps, :]
-        targets_steps = targets.reshape((self.config.batch_size, T//self.config.trial_len, self.config.trial_len, targets.shape[-1]))[:, :, steps, :]
+        logits_steps = logits.reshape((self.batch_size, T//self.config.trial_len, self.config.trial_len, logits.shape[-1]))[:, :, steps, :]
+        targets_steps = targets.reshape((self.batch_size, T//self.config.trial_len, self.config.trial_len, targets.shape[-1]))[:, :, steps, :]
 
         probabilities_steps = torch.nn.functional.softmax(logits_steps, dim=-1)
         correct = torch.argmax(probabilities_steps, dim=-1) == torch.argmax(targets_steps, dim=-1)
@@ -278,7 +348,7 @@ class Trainer():
 
 class ReversalTrainer(Trainer):
     def __init__(self, model, config, optimizer_func, scheduler_func, optimizer_kwargs={}, scheduler_kwargs={}):
-        super().__init__(model, config, optimizer_func, scheduler_func, optimizer_kwargs, scheduler_kwargs)
+        super().__init__(model, config, optimizer_func, scheduler_func, optimizer_kwargs={}, scheduler_kwargs={})
         self.criterion = torch.nn.CrossEntropyLoss()
         self.train_layouts, self.test_layouts, self.all_layouts = train_test_split()
         self.train_env, self.test_env = self.get_envs()
