@@ -30,12 +30,11 @@ class Trainer():
     SAVE_OBJECT = "SAVE_OBJECT"
     SAVE_DICT = "SAVE_DICT"
 
-
-    def __init__(self, model, config, optimizer_func, scheduler_func=None, optimizer_kwargs={}, scheduler_kwargs={}):
+    def __init__(self, model, config, optimizer_func, scheduler_func=None, env_scheduler=None, optimizer_kwargs={}, scheduler_kwargs={}, root='../'):
         self.exit = False
         self.config = config
         self.model = model
-        self.root = os.getcwd()
+        self.root = root
         self.path = get_path(self.config)
         print(self.path)
         self.model_path = os.path.join(self.root, 'run_data', self.path)
@@ -48,6 +47,8 @@ class Trainer():
         self.optimizer_kwargs = optimizer_kwargs
         self.scheduler_kwargs = scheduler_kwargs
 
+        self.env_scheduler = env_scheduler
+
         self.optimizer = optimizer_func(self.model.parameters(), **self.optimizer_kwargs)
         if self.scheduler_func is not None:
             self.scheduler = scheduler_func(self.optimizer, **self.scheduler_kwargs)
@@ -58,7 +59,12 @@ class Trainer():
                     "test_loss" : {"data": [], "tb": True, "save": False},  
                     "epoch_time": {"data": [], "tb": True, "save": False},
                     "batch_time": {"data": [], "tb": True, "save": False},
-                    "lr"        : {"data": [], "tb": True, "save": False}}
+                    "lr"        : {"data": [], "tb": True, "save": False},
+                    "train_loss/x": {"data": [], "tb": True, "save": False},
+                    "train_loss/r": {"data": [], "tb": True, "save": False},
+                    "train_loss/a": {"data": [], "tb": True, "save": False},
+                    "train_loss/weight": {"data": [], "tb": True, "save": False},
+                    "train_loss/activity": {"data": [], "tb": True, "save": False}}
         
     def get_log(self):
         return self.log
@@ -77,13 +83,13 @@ class Trainer():
         raise NotImplementedError()
     
     def save_model(self, epoch):
-        if not os.path.exists(self.model_path):
-            os.makedirs(self.model_path)
-
         if self.config.save_type == Trainer.SAVE_OBJECT:
             torch.save(self.model, os.path.join(self.model_path, str(epoch)))
         elif self.config.save_type == Trainer.SAVE_DICT:
             torch.save(self.model.state_dict(), os.path.join(self.model_path, 'weights_' + str(epoch) + '.pth'))
+
+    def save_env(self):
+        raise NotImplementedError()
 
     def save_model_log(self):
         raise NotImplementedError()
@@ -103,11 +109,23 @@ class Trainer():
         return reg
     
     def output_loss(self, logits, targets):
-        logits_ = torch.transpose(logits, 1, 2)
-        targets_ = torch.transpose(targets, 1, 2)
+        logits_ = torch.transpose(logits, self.config.t_ax, -1)
+        targets_ = torch.transpose(targets, self.config.t_ax, -1)
 
-        logits_x, logits_r, logits_a = self.train_env.split_data(logits_, dim=1)
-        targets_x, targets_r, targets_a = self.train_env.split_data(targets_, dim=1)
+        logits_x, logits_r, logits_a = self.train_env.split_data(logits_, dim=self.config.t_ax)
+        targets_x, targets_r, targets_a = self.train_env.split_data(targets_, dim=self.config.t_ax)
+
+        x_t_mask = torch.tensor(self.config.x_t_mask).to(self.config.dev)
+        logits_x = mask_tensor_by_timestep(logits_x, x_t_mask, t_ax=-1)
+        targets_x = mask_tensor_by_timestep(targets_x, x_t_mask, t_ax=-1)
+
+        a_t_mask = torch.tensor(self.config.a_t_mask).to(self.config.dev)
+        logits_a = mask_tensor_by_timestep(logits_a, a_t_mask, t_ax=-1)
+        targets_a = mask_tensor_by_timestep(targets_a, a_t_mask, t_ax=-1)
+
+        r_t_mask = torch.tensor(self.config.r_t_mask).to(self.config.dev)
+        logits_r = mask_tensor_by_timestep(logits_r, r_t_mask, t_ax=-1)
+        targets_r = mask_tensor_by_timestep(targets_r, r_t_mask, t_ax=-1)
 
         loss_x = self.criterion(logits_x, targets_x)
         loss_r = self.criterion(logits_r, targets_r)
@@ -116,6 +134,9 @@ class Trainer():
         return loss_x, loss_r, loss_a
     
     def loss(self, hiddens, logits, targets):
+        losses = {}
+        t_mask = torch.tensor(self.config.a_t_mask).to(self.config.dev)
+
         loss_weight = self.config.weight_regularization * self.weight_loss()
         loss_activity = self.config.activity_regularization * self.activity_loss(hiddens)
         loss_x, loss_r, loss_a = self.output_loss(logits, targets)
@@ -130,34 +151,51 @@ class Trainer():
         if not isinstance(self.optimizer, torch.optim.AdamW):
             loss += loss_weight
 
-        return loss
+        losses['weight'] = loss_weight.item()
+        losses['activity'] = loss_activity.item()
+        losses['x'] = loss_x.item()
+        losses['r'] = loss_r.item()
+        losses['a'] = loss_a.item()
+
+        return loss, losses
     
     def train_for_single_epoch(self):
         epoch_loss = 0
+        epoch_losses = {}
         # Get the initial sequence for the epoch
         for batch_id in range(self.config.n_batches):
             hidden = None
             self.optimizer.zero_grad()
 
             with torch.no_grad():
-                inputs, targets, _ = self.train_env.get_batch(self.config.num_trials, dropout=0.0)
+                inputs, targets, _ = self.train_env.get_batch(self.config.num_trials, self.env_scheduler.get_params())
                 # Convert data to tensors
                 data_tensor = inputs.to(dtype=self.config.dtype, device=self.config.dev)
                 target_tensor = targets.to(dtype=self.config.dtype, device=self.config.dev)
 
             logits, hidden, hiddens = self.model(data_tensor, hidden)
 
-            loss = self.loss(hiddens, logits, target_tensor)
+            loss, losses = self.loss(hiddens, logits, target_tensor)
 
             loss.backward()
+            # Check gradients
+            # with torch.no_grad():
+            #     for name, param in self.model.named_parameters():
+            #         if param.requires_grad:
+            #             print(f'{name} gradient: {torch.norm(param.grad, p=2)}')
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=2.0, norm_type=2)
             self.optimizer.step()
 
             epoch_loss += loss.item()
+            epoch_losses = add_dictionaries(epoch_losses, losses)
 
-        return epoch_loss
+        return epoch_loss, epoch_losses
 
     def on_training_start(self, save):
+        if not os.path.exists(self.model_path):
+            os.makedirs(self.model_path)
+
+        self.save_env()
         if save:
             self.save_hyperparams()
 
@@ -169,19 +207,17 @@ class Trainer():
         if save:
             os.makedirs(os.path.join(self.root, self.id))
 
-        # self.on_training_start(save)
-        self.logger = LearningLogger([self, self.model, self.train_env], path=self.path)
+        self.on_training_start(save)
+        self.logger = LearningLogger([self, self.model, self.train_env, self.env_scheduler], root=self.root, path=self.path)
 
         for epoch in range(self.config.num_epochs):
             if self.exit:
                 break
             # Train the model
             start_time = time()
-            epoch_loss = self.train_for_single_epoch()
+            epoch_loss, epoch_losses = self.train_for_single_epoch()
             end_time = time()
             epoch_duration = end_time - start_time
-
-            if self.scheduler is not None: self.scheduler.step()
 
             logger.info(
                 f"Completed epoch {epoch} with loss {epoch_loss} in {epoch_duration:.4f}s"
@@ -191,8 +227,14 @@ class Trainer():
             self.log["batch_time"]["data"].append(epoch_duration / self.config.n_batches)
             self.log["lr"]["data"].append(self.scheduler.get_last_lr())
 
+            for key, val in epoch_losses.items():
+                self.log["train_loss/" + key]["data"].append(val)
+
             save = epoch % self.config.save_model_interval == 0
             self.on_epoch_complete(epoch, save)
+
+            if self.scheduler is not None: self.scheduler.step()
+            if self.env_scheduler is not None: self.env_scheduler.step()
 
         self.on_training_complete(save)
 
@@ -200,23 +242,43 @@ class Trainer():
         if save:
             self.save_model(epoch)
 
+        print('Epoch', epoch+1)
+
         hidden = None
         with torch.no_grad():
-            inputs, targets, groundtruths = self.test_env.get_batch(self.config.num_trials_test, dropout=0.0)
+            print('TRAIN')
+            inputs, targets, groundtruths = self.train_env.get_batch(self.config.num_trials_test, self.env_scheduler.get_params())
             # Convert data to tensors
             data_tensor = inputs.to(dtype=self.config.dtype, device=self.config.dev)
             target_tensor = targets.to(dtype=self.config.dtype, device=self.config.dev)
             logits, hidden, hiddens = self.model(data_tensor, hidden)
-
-        test_loss = self.loss(hiddens, logits, target_tensor)
-        self.log["test_loss"]["data"].append(test_loss)
 
         accuracies, steps = self.get_all_accuracies(logits, target_tensor)
         
         for i, (key, arr) in enumerate(accuracies.items()):
             for val, step in zip(arr, steps[i]):
                 # print(key, step, val.numpy())
-                string = f'Accuracy/{key}_{step}'
+                string = f'trainAccuracy/{key}_{step}'
+                # print(string)
+                self.logger.writer.add_scalar(string, val, epoch)
+
+        hidden = None
+        with torch.no_grad():
+            print('TEST')
+            inputs, targets, groundtruths = self.test_env.get_batch(self.config.num_trials_test, self.env_scheduler.get_params())
+            # Convert data to tensors
+            data_tensor = inputs.to(dtype=self.config.dtype, device=self.config.dev)
+            target_tensor = targets.to(dtype=self.config.dtype, device=self.config.dev)
+            logits, hidden, hiddens = self.model(data_tensor, hidden)
+
+        accuracies, steps = self.get_all_accuracies(logits, target_tensor)
+        test_loss, test_losses = self.loss(hiddens, logits, target_tensor)
+        self.log["test_loss"]["data"].append(test_loss)
+
+        for i, (key, arr) in enumerate(accuracies.items()):
+            for val, step in zip(arr, steps[i]):
+                # print(key, step, val.numpy())
+                string = f'testAccuracy/{key}_{step}'
                 # print(string)
                 self.logger.writer.add_scalar(string, val, epoch)
 
@@ -248,11 +310,11 @@ class Trainer():
         #         print(string)
 
         a_trial_stages = ['nothing' for _ in range(self.config.trial_len)]
-        a_trial_stages[self.config.init_choice_step] = 'init'
+        if self.config.init_choice_step is not None: a_trial_stages[self.config.init_choice_step] = 'init'
         a_trial_stages[self.config.ab_choice_step] = 'choice'
 
         x_trial_stages = ['nothing' for _ in range(self.config.trial_len)]
-        x_trial_stages[self.config.init_step] = 'init'
+        if self.config.init_step is not None: x_trial_stages[self.config.init_step] = 'init'
         x_trial_stages[self.config.r_step] = 'reward'
         x_trial_stages[self.config.a_step] = 'a'
         x_trial_stages[self.config.b_step] = 'b'
@@ -277,8 +339,8 @@ class Trainer():
 
 
 class ReversalTrainer(Trainer):
-    def __init__(self, model, config, optimizer_func, scheduler_func, optimizer_kwargs={}, scheduler_kwargs={}):
-        super().__init__(model, config, optimizer_func, scheduler_func, optimizer_kwargs, scheduler_kwargs)
+    def __init__(self, model, config, optimizer_func, scheduler_func, env_scheduler, optimizer_kwargs={}, scheduler_kwargs={}):
+        super().__init__(model, config, optimizer_func, scheduler_func, env_scheduler, optimizer_kwargs, scheduler_kwargs)
         self.criterion = torch.nn.CrossEntropyLoss()
         self.train_layouts, self.test_layouts, self.all_layouts = train_test_split()
         self.train_env, self.test_env = self.get_envs()
@@ -289,11 +351,13 @@ class ReversalTrainer(Trainer):
         return self.train_env
     
     def get_test_env(self):
-        if self.train_env is None:
-            self.train_env = ReversalEnvironment(self.config, self.test_layouts)
-        return self.train_env
-
-
+        if self.test_env is None:
+            self.test_env = ReversalEnvironment(self.config, self.test_layouts)
+        return self.test_env
+    
+    def save_env(self):
+        fname = os.path.join(self.model_path, 'train_test_split.npz')
+        np.savez(fname, train=self.train_layouts, test=self.test_layouts, all=self.all_layouts)
 
 
 def generate_permutation_sets(port_dim):
@@ -368,7 +432,10 @@ def get_model_path(config):
                         'hreg', f'{config.activity_regularization:.0e}',
                         'thresh', str(config.threshold),
                         'wgain', f'{config.init_hh_weight_gain:.0e}',
-                        'lrdecay', f'{config.decay_epochs}'])
+                        'lrdecay', f'{config.decay_epochs}',
+                        'dropoutdecay', f'{config.dropout_decay_epochs}'])
+    
+    if config.amsgrad: path += '_amsgrad'
 
     return path
 
@@ -467,3 +534,55 @@ def __init__(
                     "epoch_time": {"data": [], "tb": True, "save": False},
                     "batch_time": {"data": [], "tb": True, "save": False}}
                     """
+
+def add_dictionaries(dict1, dict2):
+    result = {}
+
+    # Check if both dictionaries are empty
+    if not dict1 and not dict2:
+        return result
+
+    # Check if dict1 is empty
+    if not dict1:
+        return dict2
+
+    # Check if dict2 is empty
+    if not dict2:
+        return dict1
+
+    # Add common keys
+    common_keys = set(dict1.keys()) & set(dict2.keys())
+    for key in common_keys:
+        result[key] = dict1[key] + dict2[key]
+
+    # Add remaining keys from dict1
+    for key in set(dict1.keys()) - common_keys:
+        result[key] = dict1[key]
+
+    # Add remaining keys from dict2
+    for key in set(dict2.keys()) - common_keys:
+        result[key] = dict2[key]
+
+    return result
+
+def mask_tensor_by_timestep(x, t_mask, t_ax=1):
+    if t_mask.ndim != 1:
+        raise ValueError('t_mask must be 1D')
+    if t_ax < 0:
+        t_ax = x.ndim + t_ax
+        
+    T = x.shape[t_ax]
+    trial_len = len(t_mask)
+
+    dims = [d for d in x.shape]
+    dims[t_ax] = T//trial_len
+    dims.insert(t_ax+1, trial_len)
+
+    x_steps = x.reshape(dims)
+    t_mask = t_mask.reshape([1 if dim != len(t_mask) else dim for dim in x_steps.shape])
+    x_steps = x_steps * t_mask
+
+    x_masked = x_steps.reshape(x.shape)
+
+    return x_masked
+

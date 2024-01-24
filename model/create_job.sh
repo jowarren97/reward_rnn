@@ -1,14 +1,14 @@
 #!/bin/bash
 #
-#SBATCH --job-name=rnn
+#SBATCH --job-name=dropout_1
 #SBATCH -p gpu
-#SBATCH --gres=gpu:a100  #a100 #is the fastest one but can also just use gpu:1
+#SBATCH --gres=gpu  #a100 #is the fastest one but can also just use gpu:1
 #SBATCH -N 1
 #SBATCH -c 1
 #SBATCH --mem=4G
-#SBATCH -t 2:00:00
-#SBATCH -o ./slurm/slurm.%j.out
-#SBATCH -e ./slurm/slurm.%j.err
+#SBATCH -t 3:00:00
+#SBATCH -o ../slurm/slurm.%j.out
+#SBATCH -e ../slurm/slurm.%j.err
 #
 hostname; date
 

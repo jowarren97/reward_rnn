@@ -1,4 +1,3 @@
-from curriculum import DataCurriculum, check_train_test_split
 from model import SimpleRNN
 import torch.nn as nn
 import torch
@@ -18,11 +17,11 @@ load_dir = 'run_data_new'
 # load_dir = 'run_data'
 load_dir = os.path.join(os.getcwd(), load_dir)
 print(load_dir)
-Conf.save_dir = os.path.join(os.getcwd(), 'run_data_new_env')
+Conf.save_dir = os.path.join(os.getcwd(), 'run_data_remote')
 
 # Initialize model, curriculum, loss function and optimizer
 model = SimpleRNN(Conf)
-model.load_state_dict(torch.load(os.path.join(load_dir, 'weights_5000.pth')))
+model.load_state_dict('/Users/jo/notebooks_paper/model/run_data/2023-12-12/cd6e787/p_0.8_lr_1e-04_batchsize_64_h_256_wreg_1e-06_hreg_3e-04_thresh_None_wgain_2e-01/11:50/weights_3000.pth')
 
 data_curriculum = DataCurriculum(Conf, eval=True)
 logger = LearningLogger(Conf)

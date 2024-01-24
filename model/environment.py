@@ -27,7 +27,7 @@ class Environment(object):
                     'targets'       : {"data": [], "tb": False, "save": True},
                     'groundtruths'  : {"data": [], "tb": False, "save": True}}
         
-    def get_batch(self, num_trials=1):
+    def get_batch(self, num_trials=1, kwargs={}):
         """
         Get a batch of data consisting of specified number of trials.
 
@@ -185,7 +185,9 @@ class ReversalEnvironment(Environment):
         self.log = {**self.log, 
                     'p_A_high': {"data": [], "tb": False, "save": True}}
 
-    def get_batch(self, num_trials, dropout=0.5):
+    def get_batch(self, num_trials, kwargs={}):
+        dropout = 1.0 if 'dropout' not in kwargs else kwargs['dropout']
+
         no_stim = torch.zeros((self.config.batch_size, self.config.x_dim), 
                                     dtype=self.config.dtype, device=self.dev)
         if self.config.no_stim_token: no_stim[:, -1] = 1
@@ -209,15 +211,16 @@ class ReversalEnvironment(Environment):
             if (step - self.config.r_step) % self.config.trial_len == 0:
                 r = torch.nn.functional.one_hot(torch.logical_not(self.last_reward).to(torch.int64), num_classes=self.config.r_dim)
                 p_A = self.optimal_agent.update_beliefs(self.last_reward)
+                p_A_sequence.append(p_A)
 
-            if (step - self.config.init_step) % self.config.trial_len == 0:
+            if self.config.init_step is not None and ((step - self.config.init_step) % self.config.trial_len == 0):
                 x = self.init_vector
             if (step - self.config.a_step) % self.config.trial_len == 0:
                 x = self.a_vector
             if (step - self.config.b_step) % self.config.trial_len == 0:
                 x = self.b_vector
 
-            if (step - self.config.init_choice_step) % self.config.trial_len == 0:
+            if self.config.init_step is not None and ((step - self.config.init_choice_step) % self.config.trial_len == 0):
                 a = torch.nn.functional.pad(self.init_vector, (0, self.config.a_dim-self.init_vector.shape[-1]), mode='constant', value=0)
                 a_gt = a
             if (step - self.config.ab_choice_step) % self.config.trial_len == 0:
@@ -230,7 +233,6 @@ class ReversalEnvironment(Environment):
             r_sequence.append(r)
             a_sequence.append(a)
             a_gt_sequence.append(a_gt)
-            p_A_sequence.append(p_A)
             
             if (step - 1) % self.config.trial_len == 0:
                 self.trials_since_reversal += 1
@@ -239,7 +241,8 @@ class ReversalEnvironment(Environment):
         x, r, a, a_gt, p_A = stack_tensors([x_sequence, r_sequence, a_sequence, a_gt_sequence, p_A_sequence], axis=self.config.t_ax)
         x_shift, r_shift, a_shift , a_gt_shift, = shift_tensors([x, r, a, a_gt], axis=self.config.t_ax, shifts=[-1, -1, 1, 1])
 
-        x_mask = [1 if i not in [self.config.init_step, self.config.a_step, self.config.b_step] else 1-dropout for i in range(self.config.trial_len)]
+        dropout_steps = [i for i in [self.config.init_step, self.config.a_step, self.config.b_step] if i is not None]
+        x_mask = [1 if i not in dropout_steps else dropout for i in range(self.config.trial_len)]
         x_masked, = mask_tensors([x], no_input_list=[no_stim], masks=[x_mask], axis=self.config.t_ax)
         
         inputs = torch.cat([x_masked, r, a_shift], dim=-1)

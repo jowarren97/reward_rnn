@@ -24,12 +24,16 @@ class Conf():
     batch_size = 64
 
     # trial params
-    trial_len = 8
+    trial_len = 4
     # trial_len = 5
     port_dim = 9
-    r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 5, 6, 3, 7
+    # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 5, 6, 3, 7
+    r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, None, 1, 2, None, 3
     # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 1, 4, 5, 2, 6
     # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 3, 4, 2, 4
+    x_t_mask = [0, 0, 0, 0]
+    r_t_mask = [0, 0, 0, 0]
+    a_t_mask = [0, 0, 0, 1]
     assert ab_choice_step < trial_len
     assert a_step != b_step != init_step != r_step
     state_dim = port_dim + 2
@@ -81,5 +85,9 @@ class Conf():
 
     start_lr = 1e-4
     end_lr = 1e-5
-    decay_epochs = 4000
+    decay_epochs = 10000
     opt = 'AdamW'
+    amsgrad = False
+    # dropout = 0.9
+
+    dropout_decay_epochs = 1000
