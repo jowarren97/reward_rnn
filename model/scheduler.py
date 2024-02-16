@@ -57,7 +57,7 @@ class ReversalScheduler(Scheduler):
         super().__init__()
         # self.schedulers.append(CustomParameterScheduler('dropout', 1.0, LinearLR, start_factor=1.0, end_factor=0.0, total_iters=total_iters))
         # self.schedulers.append(CustomParameterScheduler('dropout', 1.0, StepLR, step_size=total_iters, gamma=0.5))
-        self.schedulers.append(CustomParameterScheduler('dropout', 1.0, ConstantLR, factor=1.0, total_iters=1))
+        self.schedulers.append(CustomParameterScheduler('dropout', 0.0, ConstantLR, factor=1.0, total_iters=1))
 # scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
         self.log = {'dropout' : {"data": [], "tb": True, "save": False}}
 

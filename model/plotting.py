@@ -11,110 +11,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colors import Normalize
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-"""
 def plot_trials(inputs, ground_truth, targets, choices, p_A, b=0, trials=200, sf=1.1, fname='panel.png'):
-    t = Conf.trial_len * trials
-
-    fig, axes = plt.subplots(1,6, figsize=(sf*4, sf*t//20), dpi=200)
-    axes[0].imshow(inputs[b, :t, :], vmin=0, vmax=1, aspect='auto')
-    axes[0].set_title('Input', fontsize=8)
-    axes[0].set_ylabel('Trial #')
-    axes[1].imshow(ground_truth[b, :t, :], vmin=0, vmax=1, aspect='auto')
-    axes[1].set_title('Ground truth', fontsize=8)
-    axes[2].imshow(targets[b, :t, :], vmin=0, vmax=1, aspect='auto')
-    axes[2].set_title('Target', fontsize=8)
-    axes[3].imshow(choices[b, :t, :], vmin=0, vmax=1, aspect='auto')
-    axes[3].set_title('Softmax', fontsize=8)
-
-    # # Draw white lines every 4 rows
-    # for i in range(1, choices[b, :t, :].shape[0] // 4):
-    #     axes[0].axhline(y=i * 4 - 0.5, color='white', linewidth=2)
-    #     axes[1].axhline(y=i * 4 - 0.5, color='white', linewidth=2)
-    #     axes[2].axhline(y=i * 4 - 0.5, color='white', linewidth=2)
-
-    # Set yticks at every 4th row and enable gridlines only for those ticks
-    for i, ax in enumerate(axes):
-        if i == len(axes)-1:
-            start, gap, rows = 0.5, 1, trials
-            ax.set_xticks(np.arange(0.5, Conf.trial_len, 1))
-            ax.xaxis.grid(True, linestyle='-', color='white', linewidth=1)
-        else:
-            start, gap, rows = Conf.trial_len-0.5, Conf.trial_len, t
-            ax.xaxis.grid(False)
-        # Generate ytick locations, starting from 3.5 (since we want lines between blocks of 4)
-        yticks = np.arange(start, rows, gap)
-        ax.set_yticks(yticks)
-
-        # Enable grid only for y-axis
-        ax.yaxis.grid(True, linestyle='-', color='white', linewidth=2)
-
-        # Optional: Hide x-axis grid lines
-    # Get the column indices of the largest value in each row of choices
-    choices_split = np.split(choices, [Conf.x_dim, Conf.x_dim + Conf.r_dim], axis=-1)
-    targets_split = np.split(targets, [Conf.x_dim, Conf.x_dim + Conf.r_dim], axis=-1)
-
-    a_dim_offsets = [0, Conf.x_dim, Conf.x_dim + Conf.r_dim]
-    for offset, choices_chunk, targets_chunk in zip(a_dim_offsets, choices_split, targets_split):
-        max_choices = np.argmax(choices_chunk[b, :t, :], axis=1)
-        max_targets = np.argmax(targets_chunk[b, :t, :], axis=1)
-
-        # Iterate through each row and draw a red box around the cell with the largest value
-        for i, (choice, target) in enumerate(zip(max_choices, max_targets)):
-            c = 'green' if choice==target else 'red'
-            rect = patches.Rectangle((offset+choice-0.5, i-0.5), 1, 1, linewidth=0.5, edgecolor=c, facecolor='none')
-            axes[3].add_patch(rect)
-
-    correct = (np.argmax(choices, axis=-1) == np.argmax(targets, axis=-1)).reshape((choices.shape[0], choices.shape[1]//Conf.trial_len, Conf.trial_len))
-    # axes[3].imshow(correct[b, :trials, :], aspect='auto')
-    axes[4].set_title('Correct', fontsize=8)
-    # Create a color matrix with the same shape as your correct/incorrect matrix
-    # Initialize it fully transparent
-    color_matrix = np.zeros((*correct[b, :trials, :].shape, 4))
-
-    # Set red color with alpha=0.5 for cells with 0
-    color_matrix[correct[b, :trials, :] == 0] = [1, 0, 0, 0.3]  # Red with alpha 0.5
-
-    # Set green color with alpha=0.5 for cells with 1
-    color_matrix[correct[b, :trials, :] == 1] = [0, 1, 0, 0.3]  # Green with alpha 0.5
-
-    # Now identify rows where all values are 1 and set alpha=1.0 for those cells
-    all_correct_rows = np.all(correct[b, :trials, :] == 1, axis=1)
-    color_matrix[all_correct_rows, :, 3] = 1.0  # Set alpha to 1.0 for these rows
-
-    # Display the color matrix using imshow
-    axes[4].imshow(color_matrix, aspect='auto')
-    axes[4].set_xticks(np.arange(0.5, Conf.trial_len-0.5, 1))
-    axes[4].set_yticks(np.arange(0.5, trials-0.5, 1))
-    axes[4].grid(True, linestyle='-', color='white', linewidth=1)
-    # q: how do I turn on grid on this axis
-    # a: 
-
-    for ax in axes:
-        ax.set_yticklabels([])
-        ax.set_xticklabels([])
-
-    axes[5].plot(p_A[b, :trials], 0.5 + np.arange(trials), marker='o', markersize=3, color='b')
-    axes[5].set_ylim([0, trials])
-    axes[5].set_xlim([0, 1])
-    axes[5].invert_yaxis()
-    axes[5].axvline(x=0.5, color='red', linestyle='--', linewidth=1)
-    axes[5].set_title('p(A)', fontsize=8)
-    # q: how do I plot this vertically, so that the x axis and y axis are swapped?
-    # 
-
-    proportion_correct = 100 * np.sum(correct, axis=(0,1)) / (correct.shape[0]*correct.shape[1])
-    proportion_correct = ', '.join([f'{p:.1f}' for p in proportion_correct])
-    print(proportion_correct)
-    # Set the suptitle of the figure with the calculated proportion
-    fig.suptitle('Accs: ' + proportion_correct)
-
-    plt.tight_layout(rect=[0, 0, 1, 0.985]) # Adjust layout to make space for suptitle
-    plt.show()
-
-    fig.savefig(os.path.join(Conf.save_dir, fname))
-"""
-
-def plot_trials(inputs, ground_truth, targets, choices, p_A, b=0, trials=200, sf=1.1, fname='panel.png', save_dir='./'):
     t = Conf.trial_len * trials
 
     fig, axes = plt.subplots(1,6, figsize=(sf*4, sf*t//20), dpi=200)
@@ -199,8 +96,7 @@ def plot_trials(inputs, ground_truth, targets, choices, p_A, b=0, trials=200, sf
     # q: how do I plot this vertically, so that the x axis and y axis are swapped?
     # 
 
-    print(correct.shape)
-    proportion_correct = 100 * np.sum(correct[b], axis=0) / (correct.shape[1])
+    proportion_correct = 100 * np.sum(correct, axis=(0,1)) / (correct.shape[0]*correct.shape[1])
     proportion_correct = ', '.join([f'{p:.1f}' for p in proportion_correct])
     print(proportion_correct)
     # Set the suptitle of the figure with the calculated proportion
@@ -209,7 +105,7 @@ def plot_trials(inputs, ground_truth, targets, choices, p_A, b=0, trials=200, sf
     plt.tight_layout(rect=[0, 0, 1, 0.985]) # Adjust layout to make space for suptitle
     plt.show()
 
-    fig.savefig(os.path.join(save_dir, fname))
+    fig.savefig(os.path.join(Conf.save_dir, fname))
 
 
 # def plot_average_layout_hists(p_A, inputs_arg_trial, hidden_trial, anomalous_batches, neur_ids=None, n_p_bins=50):
@@ -355,6 +251,7 @@ def plot_trials(inputs, ground_truth, targets, choices, p_A, b=0, trials=200, sf
 def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
     neur_ids = neur_ids if neur_ids is not None else np.arange(means.shape[-2])
     separate_figures = True
+    conds = [Conf.init_step, Conf.a_step, Conf.b_step] if Conf.init_step is not None else [Conf.a_step, Conf.b_step]
     # init_step, a_step, b_step = 2, 3, 4
     # load_dir = '../run_data_1_128_l2_1e6_l2_3e4'
 
@@ -367,10 +264,10 @@ def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
         raise NotImplementedError()
     else:
         n_col = Conf.port_dim
-        n_row = 3
+        n_row = len(conds)
         # Adjusting figure size based on the number of batches and neurons
-        fig_width = 16  # Adjust width as needed
-        fig_height = 9  # Adjust height as needed
+        fig_width = Conf.port_dim * 16/9  # Adjust width as needed
+        fig_height = 3 * n_row  # Adjust height as needed
         save_dir = os.path.join(Conf.save_dir, 'separate_figs', 'polar', 'mean', f'hist_griddy_{n_p_bins}')
         print(save_dir)
         if not os.path.exists(save_dir): os.makedirs(save_dir)
@@ -394,7 +291,7 @@ def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
             raise NotImplementedError()
 
         for port_id in range(Conf.port_dim):
-            for row, step in enumerate([Conf.init_step, Conf.a_step, Conf.b_step]):
+            for row, step in enumerate(conds):
                 ax = axes[row, port_id]
                 ax.xaxis.set_visible(False)
                 # ax.yaxis.set_visible(False)
@@ -415,7 +312,7 @@ def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
                 bin_heights = np.zeros((Conf.trial_len, n_p_bins))
                 for bin_id in range(n_p_bins):
                     h_mean = means[row, port_id, bin_id, k, :]
-                    bin_heights[:, bin_id] = np.roll(h_mean, shift=-Conf.init_step)
+                    bin_heights[:, bin_id] = np.roll(h_mean, shift=-Conf.init_step if Conf.init_step is not None else 0)
                 # q: how do I make 5 axes within main axis?
 
                 # Parameters for inner axes
@@ -438,19 +335,19 @@ def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
                     for j, height in enumerate(bin_heights[i, :]):
                         inner_ax.bar(centres[j], height, color=cmap(j), width=1/n_p_bins)
 
-                    inner_ax.set_ylim([0, vmax])
+                    if not np.isnan(vmax): inner_ax.set_ylim([0, vmax])
                     inner_ax.set_xlim([0, 1])
                     
                     # Turn off tick labels
                     if port_id == 0:
                         y_labels = ['0\n0' for _ in range(Conf.trial_len)]
-                        y_labels[Conf.init_step] = '0\ninit'
-                        y_labels[Conf.init_choice_step] = 'init\n0'
+                        if Conf.init_step is not None: y_labels[Conf.init_step] = '0\ninit'
+                        if Conf.init_step is not None: y_labels[Conf.init_choice_step] = 'init\n0'
                         y_labels[Conf.a_step] = '0\na'
                         y_labels[Conf.b_step] = '0\nb'
                         y_labels[Conf.ab_choice_step] = 'ch\n0'
                         y_labels[Conf.r_step] = '0\nrew'
-                        inner_ax.set_ylabel(np.roll(y_labels, shift=-Conf.init_step)[i], fontsize=6)
+                        inner_ax.set_ylabel(np.roll(y_labels, shift=-Conf.init_step if Conf.init_step is not None else 0)[i], fontsize=6)
                     inner_ax.set_yticks([])
                     inner_ax.spines['right'].set_visible(False)
                     inner_ax.spines['top'].set_visible(False)
@@ -484,12 +381,15 @@ def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
                     
 def get_means(p_A, inputs_arg_trial, hidden_trial, anomalous_batches, n_p_bins=50): 
     n_neurons = hidden_trial.shape[-1]
-    bin_edges = np.linspace(1, 0, n_p_bins+1)  # Creates 5 edges for 4 bins
-    bins = np.digitize(p_A, bin_edges) - 1 
+    bin_edges = np.linspace(1, 0, n_p_bins+1)[1:]  # Creates 5 edges for 4 bins
+    bins = np.digitize(p_A, bin_edges) 
     conds = [Conf.init_step, Conf.a_step, Conf.b_step] if Conf.init_step is not None else [Conf.a_step, Conf.b_step]
     h_mean_all_layouts = np.zeros((len(conds), Conf.port_dim, n_p_bins, n_neurons, Conf.trial_len))
     # for k in neur_ids:
     #     vmax = np.percentile(hidden_trial[:,:,:,k], 99)
+
+    # inputs_arg_trial = np.argmax(inputs_trial[:,:,:Conf.x_dim], axis=-1)[:,0,:]
+    # inputs_arg_trial = np.repeat(inputs_arg_trial[:, np.newaxis, :], inputs_trial.shape[1], axis=1)
 
     for port_id in range(Conf.port_dim):
         for row, step in enumerate(conds):
@@ -511,9 +411,9 @@ def get_means(p_A, inputs_arg_trial, hidden_trial, anomalous_batches, n_p_bins=5
                     # print(port_id, ['init', 'a', 'b'][row], bin_id, trial_idxs[0].shape)
 
                     h = hidden_trial[trial_idxs[0], trial_idxs[1], :, :]
-                    h_mean = np.mean(h, axis=0)
-
-                    h_mean_all_layouts[row, port_id, bin_id, :, :] = np.transpose(h_mean, (1,0))
+                    if h.shape[0]:
+                        h_mean = np.mean(h, axis=0)
+                        h_mean_all_layouts[row, port_id, bin_id, :, :] = np.transpose(h_mean, (1,0))
 
     p_A_bin_counts = np.bincount(bins.flatten(), minlength=n_p_bins)
 

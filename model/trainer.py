@@ -13,7 +13,7 @@ from time import time
 import numpy as np
 import torch
 import torch.nn.functional as F
-from environment import ReversalEnvironment
+from environment import ReversalEnvironment, SimpleSlotEnvironment
 from itertools import permutations
 from copy import copy
 from random import shuffle
@@ -104,13 +104,15 @@ class Trainer():
         return reg
     
     def activity_loss(self, hiddens, type='l2'):
-        reg = torch.tensor(0.).to(self.config.dev)
         reg = torch.norm(hiddens, p=1 if type=='l1' else 2)
         return reg
     
     def output_loss(self, logits, targets):
-        logits_ = torch.transpose(logits, self.config.t_ax, -1)
-        targets_ = torch.transpose(targets, self.config.t_ax, -1)
+        logits_ = logits[:, self.config.loss_step_start:, :]
+        targets_ = targets[:, self.config.loss_step_start:, :]
+        
+        logits_ = torch.transpose(logits_, self.config.t_ax, -1)
+        targets_ = torch.transpose(targets_, self.config.t_ax, -1)
 
         logits_x, logits_r, logits_a = self.train_env.split_data(logits_, dim=self.config.t_ax)
         targets_x, targets_r, targets_a = self.train_env.split_data(targets_, dim=self.config.t_ax)
@@ -130,12 +132,18 @@ class Trainer():
         loss_x = self.criterion(logits_x, targets_x)
         loss_r = self.criterion(logits_r, targets_r)
         loss_a = self.criterion(logits_a, targets_a)
+        # with torch.no_grad():
+        #     loss_x_per_step = torch.mean(torch.nn.functional.cross_entropy(logits_x, targets_x, reduce=False), axis=0)
+        #     print(loss_x_per_step)
+        #     loss_a_per_step = torch.mean(torch.nn.functional.cross_entropy(logits_a, targets_a, reduce=False), axis=0)
+        #     # print(loss_a_per_step)
+        #     loss_r_per_step = torch.mean(torch.nn.functional.cross_entropy(logits_r, targets_r, reduce=False), axis=0)
+        #     # print(loss_r_per_step)
 
         return loss_x, loss_r, loss_a
     
     def loss(self, hiddens, logits, targets):
         losses = {}
-        t_mask = torch.tensor(self.config.a_t_mask).to(self.config.dev)
 
         loss_weight = self.config.weight_regularization * self.weight_loss()
         loss_activity = self.config.activity_regularization * self.activity_loss(hiddens)
@@ -219,9 +227,6 @@ class Trainer():
             end_time = time()
             epoch_duration = end_time - start_time
 
-            logger.info(
-                f"Completed epoch {epoch} with loss {epoch_loss} in {epoch_duration:.4f}s"
-            )
             self.log["train_loss"]["data"].append(epoch_loss)
             self.log["epoch_time"]["data"].append(epoch_duration)
             self.log["batch_time"]["data"].append(epoch_duration / self.config.n_batches)
@@ -232,6 +237,9 @@ class Trainer():
 
             save = epoch % self.config.save_model_interval == 0
             self.on_epoch_complete(epoch, save)
+            logger.info(
+                f"Completed epoch {epoch} with train loss {epoch_loss} in {epoch_duration:.4f}s"
+            )
 
             if self.scheduler is not None: self.scheduler.step()
             if self.env_scheduler is not None: self.env_scheduler.step()
@@ -243,7 +251,7 @@ class Trainer():
             self.save_model(epoch)
 
         print('Epoch', epoch+1)
-
+        print(self.env_scheduler.get_params())
         hidden = None
         with torch.no_grad():
             print('TRAIN')
@@ -254,6 +262,8 @@ class Trainer():
             logits, hidden, hiddens = self.model(data_tensor, hidden)
 
         accuracies, steps = self.get_all_accuracies(logits, target_tensor)
+        train_loss, train_losses = self.loss(hiddens, logits, target_tensor)
+        logger.info(f"Train loss {train_losses}")
         
         for i, (key, arr) in enumerate(accuracies.items()):
             for val, step in zip(arr, steps[i]):
@@ -275,6 +285,8 @@ class Trainer():
         test_loss, test_losses = self.loss(hiddens, logits, target_tensor)
         self.log["test_loss"]["data"].append(test_loss)
 
+        logger.info(f"Test loss {test_losses}")
+
         for i, (key, arr) in enumerate(accuracies.items()):
             for val, step in zip(arr, steps[i]):
                 # print(key, step, val.numpy())
@@ -289,6 +301,10 @@ class Trainer():
         return
     
     def get_all_accuracies(self, logits, targets):
+        # TODO: clean up
+
+        logits = logits[:, self.config.loss_step_start:, :]
+        targets = targets[:, self.config.loss_step_start:, :]
         splits = ['x', 'r', 'a']
         # steps_split = [[self.config.init_step-1, self.config.a_step-1, self.config.b_step-1],
         #                 [self.config.r_step-1],
@@ -300,8 +316,8 @@ class Trainer():
         targets_split = torch.split(targets, dim_splits, dim=-1)
 
         accuracies = dict()
-        for split, steps, logit, target in zip(splits, steps_split, logits_split, targets_split):
-            accuracies[split] = self.get_accuracy_steps(logit, target, steps)
+        for dim_split, split, steps, logit, target in zip(dim_splits, splits, steps_split, logits_split, targets_split):
+            if dim_split > 0: accuracies[split] = self.get_accuracy_steps(logit, target, steps)
 
         # for i, (key, arr) in enumerate(accuracies.items()):
         #     for val, step in zip(arr, steps_split[i]):
@@ -309,18 +325,20 @@ class Trainer():
         #         string = f'Accuracy/{key}_{step}'
         #         print(string)
 
-        a_trial_stages = ['nothing' for _ in range(self.config.trial_len)]
-        if self.config.init_choice_step is not None: a_trial_stages[self.config.init_choice_step] = 'init'
-        a_trial_stages[self.config.ab_choice_step] = 'choice'
+        # a_trial_stages = ['nothing' for _ in range(self.config.trial_len)]
+        # if self.config.init_choice_step is not None: a_trial_stages[self.config.init_choice_step] = 'init'
+        # a_trial_stages[self.config.ab_choice_step] = 'choice'
 
-        x_trial_stages = ['nothing' for _ in range(self.config.trial_len)]
-        if self.config.init_step is not None: x_trial_stages[self.config.init_step] = 'init'
-        x_trial_stages[self.config.r_step] = 'reward'
-        x_trial_stages[self.config.a_step] = 'a'
-        x_trial_stages[self.config.b_step] = 'b'
-        print('Accuracy each step (a):\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(accuracies['a'], a_trial_stages)]))
-        print('Accuracy each step (x):\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(accuracies['x'], x_trial_stages)]))
-
+        # x_trial_stages = ['nothing' for _ in range(self.config.trial_len)]
+        # if self.config.init_step is not None: x_trial_stages[self.config.init_step] = 'init'
+        # x_trial_stages[self.config.r_step] = 'reward'
+        # x_trial_stages[self.config.a_step] = 'a'
+        # x_trial_stages[self.config.b_step] = 'b'
+        # if 'a' in accuracies: print('Accuracy each step (a):\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(accuracies['a'], a_trial_stages)]))
+        # if 'x' in accuracies: print('Accuracy each step (x):\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(accuracies['x'], x_trial_stages)]))
+        for item in accuracies:
+            print(item, accuracies[item])
+            
         return accuracies, steps_split
         
     def get_accuracy_steps(self, logits, targets, steps=None):
@@ -342,7 +360,7 @@ class ReversalTrainer(Trainer):
     def __init__(self, model, config, optimizer_func, scheduler_func, env_scheduler, optimizer_kwargs={}, scheduler_kwargs={}):
         super().__init__(model, config, optimizer_func, scheduler_func, env_scheduler, optimizer_kwargs, scheduler_kwargs)
         self.criterion = torch.nn.CrossEntropyLoss()
-        self.train_layouts, self.test_layouts, self.all_layouts = train_test_split()
+        self.train_layouts, self.test_layouts, self.all_layouts = train_test_split(self.config.port_dim, init_port=self.config.init_step is not None)
         self.train_env, self.test_env = self.get_envs()
 
     def get_train_env(self):
@@ -360,9 +378,43 @@ class ReversalTrainer(Trainer):
         np.savez(fname, train=self.train_layouts, test=self.test_layouts, all=self.all_layouts)
 
 
-def generate_permutation_sets(port_dim):
+class SimpleSlotTrainer(Trainer):
+    def __init__(self, model, config, optimizer_func, scheduler_func, env_scheduler, optimizer_kwargs={}, scheduler_kwargs={}):
+        super().__init__(model, config, optimizer_func, scheduler_func, env_scheduler, optimizer_kwargs, scheduler_kwargs)
+        self.criterion = torch.nn.CrossEntropyLoss()
+
+        layouts = [p for p in permutations(range(config.port_dim), config.trial_len)]
+        layouts = np.array(layouts)
+        n_layouts = layouts.shape[0]
+        # q: random selection of elements from a list (layouts) without replacement
+        train_idxs = np.random.choice(np.arange(n_layouts), size=int(0.8*n_layouts), replace=False)
+        test_idxs = np.delete(np.arange(n_layouts), train_idxs, axis=0)
+
+        self.train_layouts, self.test_layouts, self.all_layouts = layouts[train_idxs], layouts[test_idxs], layouts
+        self.train_env, self.test_env = self.get_envs()
+
+    def get_train_env(self):
+        if self.train_env is None:
+            self.train_env = SimpleSlotEnvironment(self.config, self.train_layouts)
+        return self.train_env
+    
+    def get_test_env(self):
+        if self.test_env is None:
+            self.test_env = SimpleSlotEnvironment(self.config, self.test_layouts)
+        return self.test_env
+    
+    def save_env(self):
+        return
+        # fname = os.path.join(self.model_path, 'train_test_split.npz')
+        # np.savez(fname, train=self.train_layouts, test=self.test_layouts, all=self.all_layouts)
+
+
+def generate_permutation_sets(port_dim, init_port):
     # Generate all permutations
-    perms = permutations(range(port_dim), 3)
+    if init_port:
+        perms = permutations(range(port_dim), 3)
+    else:
+        perms = permutations(range(port_dim), 2)
 
     # Dictionaries for initiation port sets and choice port sets
     # init_port_sets = {i: set() for i in range(port_dim)}
@@ -371,16 +423,16 @@ def generate_permutation_sets(port_dim):
 
     # Populate the sets
     for perm in perms:
-        x, y, z = perm
+        # x, y, z = perm
         # init_port_sets[x].add(perm)
         # choice_port_sets[frozenset([y, z])].add(perm)
-        choice_port_sets[frozenset([y, z])].append(perm)
+        choice_port_sets[frozenset([perm[-2], perm[-1]])].append(perm)
 
     return choice_port_sets
 
 
-def train_test_split(port_dim=9, train_ratio=0.8):
-    new_dict = generate_permutation_sets(port_dim)
+def train_test_split(port_dim=9, train_ratio=0.8, init_port=True):
+    new_dict = generate_permutation_sets(port_dim, init_port)
     reduced_dict = copy(new_dict)
 
     n_layouts = len(new_dict)
@@ -414,7 +466,7 @@ def train_test_split(port_dim=9, train_ratio=0.8):
 
     assert not any([bool(k_test == k_train) for k_test in test_keys for k_train in train_keys])
 
-    all_perms = np.array([p for p in permutations(range(port_dim), 3)])
+    all_perms = np.array([p for p in permutations(range(port_dim), 3 if init_port else 2)])
 
     return np.array(train), np.array(test), np.array(all_perms)
 
@@ -424,19 +476,19 @@ def get_path(config):
     return os.path.join(date, get_git_commit_id(), get_model_path(config), time)
 
 def get_model_path(config):
+    # path = config.get_path()
     path = '_'.join([   'p', str(config.reward_prob), 
-                        'lr', f'{config.start_lr:.0e}-{config.end_lr:.0e}',
-                        'batchsize', str(config.batch_size),
-                        'h', str(config.hidden_dim), 
-                        'wreg', f'{config.weight_regularization:.0e}',
-                        'hreg', f'{config.activity_regularization:.0e}',
-                        'thresh', str(config.threshold),
-                        'wgain', f'{config.init_hh_weight_gain:.0e}',
-                        'lrdecay', f'{config.decay_epochs}',
-                        'dropoutdecay', f'{config.dropout_decay_epochs}'])
-    
+                            'lr', f'{config.start_lr:.0e}-{config.end_lr:.0e}',
+                            'batchsize', str(config.batch_size),
+                            'h', str(config.hidden_dim), 
+                            'wreg', f'{config.weight_regularization:.0e}',
+                            'hreg', f'{config.activity_regularization:.0e}',
+                            'thresh', str(config.threshold),
+                            'wgain', f'{config.init_hh_weight_gain:.0e}',
+                            'lrdecay', f'{config.decay_epochs}',
+                            'dropoutdecay', f'{config.dropout_decay_epochs}'])
+        
     if config.amsgrad: path += '_amsgrad'
-
     return path
 
 def get_git_commit_id():
@@ -579,7 +631,9 @@ def mask_tensor_by_timestep(x, t_mask, t_ax=1):
     dims.insert(t_ax+1, trial_len)
 
     x_steps = x.reshape(dims)
-    t_mask = t_mask.reshape([1 if dim != len(t_mask) else dim for dim in x_steps.shape])
+
+    t_mask_dims = [1 for _ in range(len(dims)-1)] + [len(t_mask)]
+    t_mask = t_mask.reshape(t_mask_dims)
     x_steps = x_steps * t_mask
 
     x_masked = x_steps.reshape(x.shape)

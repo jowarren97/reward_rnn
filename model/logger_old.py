@@ -14,9 +14,6 @@ class LearningLogger:
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
 
-        self.hdf5_path = os.path.join(self.save_dir, 'data.h5')
-        if os.path.exists(self.hdf5_path):
-            os.remove(self.hdf5_path)
         # self.hdf5_file = h5py.File(self.hdf5_path, 'w')  # Open in write mode
 
     def reset(self):
@@ -40,7 +37,10 @@ class LearningLogger:
             # self.a_accuracy_steps = ( self.a_accuracy_steps * (self.n_trials - 1) + accuracy_steps ) / self.n_trials
             # self.accuracy_all = ( self.accuracy_all * (self.n_trials - 1) + accuracy_all ) / self.n_trials
             # self.accuracy_pair = ( self.accuracy_pair * (self.n_trials - 1) + accuracy_pair ) / self.n_trials
-            self.choices_hist_buffer.append(torch.nn.functional.softmax(logits, dim=-1).numpy())        
+            logits_split = torch.split(logits, [self.config.x_dim, self.config.r_dim, self.config.a_dim], dim=-1)
+            choices = torch.concat([torch.nn.functional.softmax(split, dim=-1) for split in logits_split], dim=-1)
+            print(logits.shape, choices.shape)
+            self.choices_hist_buffer.append(choices.numpy())        
 
         if inputs is not None:
             self.inputs_hist_buffer.append(inputs.numpy())
@@ -124,7 +124,15 @@ class LearningLogger:
 
     def save_data(self, fname='data'):
         start = time()
-        with h5py.File(self.hdf5_path, 'a') as file:  # Open file in append mode
+
+        if '.' not in fname:
+            fname += '.h5'
+
+        hdf5_path = os.path.join(self.save_dir, fname)
+        if os.path.exists(hdf5_path):
+            os.remove(hdf5_path)
+
+        with h5py.File(hdf5_path, 'a') as file:  # Open file in append mode
             self.to_hdf5(file, self.inputs_hist.astype(bool), 'inputs')
             self.to_hdf5(file, self.targets_hist.astype(bool), 'targets')
             self.to_hdf5(file, self.choices_hist, 'choices')

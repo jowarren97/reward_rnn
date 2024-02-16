@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-#SBATCH --job-name=dropout_1
+#SBATCH --job-name=a4_512
 #SBATCH -p gpu
-#SBATCH --gres=gpu  #a100 #is the fastest one but can also just use gpu:1
+#SBATCH --gres=gpu:a100  #a100 #is the fastest one but can also just use gpu:1
 #SBATCH -N 1
 #SBATCH -c 1
 #SBATCH --mem=4G

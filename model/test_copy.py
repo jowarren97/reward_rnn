@@ -9,12 +9,13 @@ import numpy as np
 
 print("Using device: ", Conf.dev)
 
-Conf.batch_size = 504
-Conf.hidden_dim = 256
+Conf.batch_size = 10000
+# Conf.hidden_dim = 128
 Conf.num_epochs_test = 1
+print(Conf.num_trials_test)
 # load_dir = 'run_data_08_256_l2_1e6_l2_3e4'
 # load_dir = 'run_data'
-load_dir = 'run_data/2024-01-23/p_0.8_lr_1e-04-1e-05_batchsize_64_h_256_wreg_1e-06_hreg_3e-04_thresh_None_wgain_5e-01_lrdecay_10000_dropoutdecay_1000/13:58'
+load_dir = '/Users/jo/notebooks_paper/run_data/2024-02-05/Untitled/18:37'
 # load_dir = '/Users/jo/notebooks_paper/run_data/2024-01-16/5c363ba/p_0.8_lr_1e-04-1e-05_batchsize_64_h_256_wreg_1e-06_hreg_3e-04_thresh_None_wgain_5e-01_lrdecay_10000_dropoutdecay_1000/16:27/'
 # load_dir = '/Users/jo/notebooks_paper/model/run_data/2023-12-12/cd6e787/p_0.8_lr_1e-04_batchsize_64_h_256_wreg_1e-06_hreg_3e-04_thresh_None_wgain_2e-01/11:50/'
 # Conf.save_dir = os.path.join(os.getcwd(), 'run_data_remote')
@@ -22,10 +23,10 @@ Conf.save_dir = load_dir
 
 # Initialize model, curriculum, loss function and optimizer
 model = SimpleRNN(Conf)
-model.load_state_dict(torch.load(os.path.join(load_dir, 'weights_1500.pth'), map_location=torch.device(Conf.dev)))
+model.load_state_dict(torch.load(os.path.join(load_dir, 'weights_1050.pth'), map_location=torch.device(Conf.dev)))
 data = np.load(os.path.join(load_dir, 'train_test_split.npz'))
 train_layouts, test_layouts, all_layouts = data['train'], data['test'], data['all']
-print(train_layouts)
+print('len', len(test_layouts))
 # train_layouts, test_layouts, all_layouts = train_test_split()
 train_env, test_env, all_env = ReversalEnvironment(Conf, train_layouts), ReversalEnvironment(Conf, test_layouts), ReversalEnvironment(Conf, all_layouts)
 
@@ -61,19 +62,21 @@ for i in range(Conf.num_epochs_test):
     logger.reset()
     step(model, train_env, num_trials=Conf.num_trials_test, logger=logger)
     logger.get_data()
+    logger.save_data(fname=f'data_train')
     logger.print()
 
     print('TEST')
     logger.reset()
     step(model, test_env, num_trials=Conf.num_trials_test, logger=logger)
     logger.get_data()
+    logger.save_data(fname=f'data_test')
     logger.print()
 
     print('ALL')
     logger.reset()
     step(model, all_env, num_trials=Conf.num_trials_test, logger=logger)
     logger.get_data()
-    logger.save_data(fname=f'data_all_{i}')
+    logger.save_data(fname=f'data_all')
     logger.print()
 
     # logger.reset_logs()

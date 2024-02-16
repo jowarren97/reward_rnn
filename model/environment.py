@@ -83,7 +83,7 @@ class Environment(object):
     def get_log(self):
         return self.log
 
-    def split_data(self, data):
+    def split_data(self, data, dim=-1):
         """
         Split the data into different components based on configured dimensions.
 
@@ -98,7 +98,7 @@ class Environment(object):
         """
         x_dim, r_dim, a_dim = self.config.x_dim, self.config.r_dim, self.config.a_dim
         try:
-            return torch.split(data, [x_dim, r_dim, a_dim], axis=-1)
+            return torch.split(data, [x_dim, r_dim, a_dim], dim=dim)
         except Exception as e:
             raise ValueError(f"Error splitting data: {e}")
         
@@ -154,6 +154,53 @@ class Environment(object):
             f"Inputs, targets, and groundtruths must be detached. "
         return
     
+
+class SimpleSlotEnvironment(Environment):
+    def __init__(self, config, layouts):
+        super().__init__(config)
+        self.layouts = layouts
+
+    def get_batch(self, num_trials=2, kwargs={}):
+        self.idxs = torch.randint(len(self.layouts), (self.config.batch_size,))
+        layouts_batch = torch.Tensor(self.layouts[self.idxs]).to(dtype=torch.long, device=self.dev)
+
+        # Convert indices to one-hot vectors
+        layouts_one_hot = torch.nn.functional.one_hot(layouts_batch, num_classes=self.config.x_dim)
+
+        no_stim = torch.zeros((self.config.batch_size, self.config.x_dim), 
+                                    dtype=self.config.dtype, device=self.dev)
+        if self.config.no_stim_token: no_stim[:, -1] = 1
+
+        x_sequence = []
+
+        self.reset()
+
+        for step in range(self.config.trial_len * num_trials):
+            x = layouts_one_hot[:, step % self.config.trial_len].to(dtype=self.config.dtype, device=self.dev)
+            x_sequence.append(x)
+
+        x, = stack_tensors([x_sequence], axis=self.config.t_ax)
+        x_shift, = shift_tensors([x], axis=self.config.t_ax, shifts=[self.config.target_shift])
+
+        x_mask = [0. for _ in range(self.config.trial_len)]
+        x_masked, = mask_tensors([x], no_input_list=[no_stim], masks=[x_mask], axis=self.config.t_ax)
+
+        # x_shift, = shift_tensors([x], axis=self.config.t_ax, shifts=[self.config.trial_len])
+
+        inputs = x_masked
+        targets = x_shift
+        groundtruths = x_shift
+        # groundtruths = torch.cat([x_shift, r_shift, a], dim=-1)
+        self.log['inputs']['data'].append(inputs)
+        self.log['targets']['data'].append(targets)
+        self.log['groundtruths']['data'].append(groundtruths)
+
+        return inputs, targets, groundtruths
+    
+    def reset(self):
+        return
+
+    
 class ReversalEnvironment(Environment):
     """
     Reversal environment class inheriting from Environment.
@@ -185,6 +232,88 @@ class ReversalEnvironment(Environment):
         self.log = {**self.log, 
                     'p_A_high': {"data": [], "tb": False, "save": True}}
 
+    # def get_batch(self, num_trials, kwargs={}):
+    #     dropout = 1.0 if 'dropout' not in kwargs else kwargs['dropout']
+
+    #     no_stim = torch.zeros((self.config.batch_size, self.config.x_dim), 
+    #                                 dtype=self.config.dtype, device=self.dev)
+    #     if self.config.no_stim_token: no_stim[:, -1] = 1
+        
+    #     no_reward = torch.zeros((self.config.batch_size, self.config.r_dim), 
+    #                             dtype=self.config.dtype, device=self.dev)
+    #     if self.config.no_reward_token: no_reward[:, -1] = 1
+        
+    #     no_action = torch.zeros((self.config.batch_size, self.config.a_dim), 
+    #                             dtype=self.config.dtype, device=self.dev)
+    #     if self.config.no_action_token: no_action[:, -1] = 1
+
+    #     x_sequence, r_sequence, a_sequence, a_gt_sequence, p_A_sequence = [], [], [], [], []
+
+    #     self.reset()
+
+    #     for step in range(self.config.trial_len * num_trials):
+    #         x, r, a, a_gt = no_stim, no_reward, no_action, no_action
+    #         # stimulus, reward, action
+            
+    #         # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 3, 4, 2, 4
+    #         if (step - self.config.r_step) % self.config.trial_len == 0:
+    #             if (step - self.config.r_step) // self.config.trial_len > 0:
+    #                 r = torch.nn.functional.one_hot(torch.logical_not(self.last_reward).to(torch.int64), num_classes=self.config.r_dim)
+    #                 p_A = self.optimal_agent.update_beliefs(self.last_reward)
+    #             else:
+    #                 r = no_reward
+    #                 p_A = self.optimal_agent.p_A_high
+    #             p_A_sequence.append(p_A)
+
+    #         if self.config.init_step is not None and ((step - self.config.init_step) % self.config.trial_len == 0):
+    #             x = self.init_vector
+    #         if (step - self.config.a_step) % self.config.trial_len == 0:
+    #             x = self.a_vector
+    #         if (step - self.config.b_step) % self.config.trial_len == 0:
+    #             x = self.b_vector
+
+    #         if self.config.init_step is not None and ((step - self.config.init_choice_step) % self.config.trial_len == 0):
+    #             a = torch.nn.functional.pad(self.init_vector, (0, self.config.a_dim-self.init_vector.shape[-1]), mode='constant', value=0)
+    #             a_gt = a
+    #             # if not self.config.provide_actions: a, a_gt = no_action, no_action
+    #         if (step - self.config.ab_choice_step) % self.config.trial_len == 0:
+    #             ab_choice = self.optimal_agent.choose_action()
+    #             a = torch.nn.functional.pad(ab_choice, (0, self.config.a_dim-ab_choice.shape[-1]), mode='constant', value=0)
+    #             a_gt = self.groundtruth_choice()
+    #             self.compute_reward(a, a_gt)
+    #             # if not self.config.provide_actions: a, a_gt = no_action, no_action
+
+    #         x_sequence.append(x)
+    #         r_sequence.append(r)
+    #         a_sequence.append(a)
+    #         a_gt_sequence.append(a_gt)
+            
+    #         if (step - 1) % self.config.trial_len == 0:
+    #             self.trials_since_reversal += 1
+    #             self.check_and_switch_block()
+
+    #     x, r, a, a_gt, p_A = stack_tensors([x_sequence, r_sequence, a_sequence, a_gt_sequence, p_A_sequence], axis=self.config.t_ax)
+
+    #     dropout_steps = [i for i in [self.config.init_step, self.config.a_step, self.config.b_step] if i is not None]
+    #     x_mask = [1. if i not in dropout_steps else dropout for i in range(self.config.trial_len)]
+    #     a_mask = [1. if self.config.provide_actions else 0. for i in range(self.config.trial_len)]
+        
+    #     x_masked, = mask_tensors([x], no_input_list=[no_stim], masks=[x_mask], axis=self.config.t_ax, unmask_first=True)
+    #     a_masked, = mask_tensors([a], no_input_list=[no_action], masks=[a_mask], axis=self.config.t_ax, unmask_first=True)
+
+    #     x_shift, r_shift, a_shift , a_gt_shift, a_masked_shift = shift_tensors([x, r, a, a_gt, a_masked], axis=self.config.t_ax, shifts=[-1, -1, 1, 1, 1])
+
+    #     inputs = torch.cat([x_masked, r, a_shift if self.config.provide_actions else a_masked_shift], dim=-1)
+    #     targets = torch.cat([x_shift, r_shift, a], dim=-1)
+    #     groundtruths = torch.cat([x_shift, r_shift, a_gt], dim=-1)
+    #     # groundtruths = torch.cat([x_shift, r_shift, a], dim=-1)
+    #     self.log['inputs']['data'].append(inputs)
+    #     self.log['targets']['data'].append(targets)
+    #     self.log['groundtruths']['data'].append(groundtruths)
+    #     self.log['p_A_high']['data'].append(p_A)
+
+    #     return inputs, targets, groundtruths
+
     def get_batch(self, num_trials, kwargs={}):
         dropout = 1.0 if 'dropout' not in kwargs else kwargs['dropout']
 
@@ -204,9 +333,30 @@ class ReversalEnvironment(Environment):
 
         self.reset()
 
+        if self.config.pre_trial:
+            for step in range(2):
+                x, r, a, a_gt = no_stim, no_reward, no_action, no_action
+
+                x = self.a_vector if step==0 else self.b_vector
+
+                x_sequence.append(x)
+                r_sequence.append(r)
+                a_sequence.append(a)
+                a_gt_sequence.append(a_gt)
+
+            x_pre, r_pre, a_pre, a_gt_pre = stack_tensors([x_sequence, r_sequence, a_sequence, a_gt_sequence], axis=self.config.t_ax)
+
+        x_sequence, r_sequence, a_sequence, a_gt_sequence, p_A_sequence = [], [], [], [], []
+
         for step in range(self.config.trial_len * num_trials):
             x, r, a, a_gt = no_stim, no_reward, no_action, no_action
             # stimulus, reward, action
+            if (step - 1 - self.config.ab_choice_step) % self.config.trial_len == 0:
+                ab_choice = self.optimal_agent.choose_action()
+                a = torch.nn.functional.pad(ab_choice, (0, self.config.a_dim-ab_choice.shape[-1]), mode='constant', value=0)
+                a_gt = self.groundtruth_choice()
+                self.compute_reward(a, a_gt)
+
             # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 3, 4, 2, 4
             if (step - self.config.r_step) % self.config.trial_len == 0:
                 r = torch.nn.functional.one_hot(torch.logical_not(self.last_reward).to(torch.int64), num_classes=self.config.r_dim)
@@ -215,19 +365,14 @@ class ReversalEnvironment(Environment):
 
             if self.config.init_step is not None and ((step - self.config.init_step) % self.config.trial_len == 0):
                 x = self.init_vector
-            if (step - self.config.a_step) % self.config.trial_len == 0:
+            if self.config.a_step is not None and (step - self.config.a_step) % self.config.trial_len == 0:
                 x = self.a_vector
-            if (step - self.config.b_step) % self.config.trial_len == 0:
+            if self.config.b_step is not None and (step - self.config.b_step) % self.config.trial_len == 0:
                 x = self.b_vector
 
             if self.config.init_step is not None and ((step - self.config.init_choice_step) % self.config.trial_len == 0):
                 a = torch.nn.functional.pad(self.init_vector, (0, self.config.a_dim-self.init_vector.shape[-1]), mode='constant', value=0)
                 a_gt = a
-            if (step - self.config.ab_choice_step) % self.config.trial_len == 0:
-                ab_choice = self.optimal_agent.choose_action()
-                a = torch.nn.functional.pad(ab_choice, (0, self.config.a_dim-ab_choice.shape[-1]), mode='constant', value=0)
-                a_gt = self.groundtruth_choice()
-                self.compute_reward(a, a_gt)
 
             x_sequence.append(x)
             r_sequence.append(r)
@@ -239,15 +384,33 @@ class ReversalEnvironment(Environment):
                 self.check_and_switch_block()
 
         x, r, a, a_gt, p_A = stack_tensors([x_sequence, r_sequence, a_sequence, a_gt_sequence, p_A_sequence], axis=self.config.t_ax)
-        x_shift, r_shift, a_shift , a_gt_shift, = shift_tensors([x, r, a, a_gt], axis=self.config.t_ax, shifts=[-1, -1, 1, 1])
 
         dropout_steps = [i for i in [self.config.init_step, self.config.a_step, self.config.b_step] if i is not None]
-        x_mask = [1 if i not in dropout_steps else dropout for i in range(self.config.trial_len)]
-        x_masked, = mask_tensors([x], no_input_list=[no_stim], masks=[x_mask], axis=self.config.t_ax)
+        x_mask = [1. if i not in dropout_steps else dropout for i in range(self.config.trial_len)]
+        a_mask = [1. if self.config.provide_actions else 0. for i in range(self.config.trial_len)]
         
-        inputs = torch.cat([x_masked, r, a_shift], dim=-1)
-        targets = torch.cat([x_shift, r_shift, a], dim=-1)
-        groundtruths = torch.cat([x_shift, r_shift, a_gt], dim=-1)
+        x_masked, = mask_tensors([x], no_input_list=[no_stim], masks=[x_mask], axis=self.config.t_ax, unmask_first=not self.config.pre_trial)
+        a_masked, = mask_tensors([a], no_input_list=[no_action], masks=[a_mask], axis=self.config.t_ax, unmask_first=True)
+
+        x_shift, r_shift, a_shift , a_gt_shift, a_masked_shift = shift_tensors([x, r, a, a_gt, a_masked], axis=self.config.t_ax, shifts=[-1, -1, -1, -1, -1])
+
+        if self.config.pre_trial:
+            x = torch.cat([x_pre, x], dim=1)
+            x_masked = torch.cat([x_pre, x_masked], dim=1)
+            r = torch.cat([r_pre, r], dim=1)
+            a = torch.cat([a_pre, a], dim=1)
+            a_masked = torch.cat([a_pre, a_masked], dim=1)
+            a_gt = torch.cat([a_gt_pre, a_gt], dim=1)
+            x_shift = torch.cat([x_pre, x_shift], dim=1)
+            r_shift = torch.cat([r_pre, r_shift], dim=1)
+            a_shift = torch.cat([a_pre, a_shift], dim=1)
+            a_gt_shift = torch.cat([a_gt_pre, a_gt_shift], dim=1)
+            a_masked_shift = torch.cat([a_pre, a_masked_shift], dim=1)
+
+        inputs = torch.cat([x_masked, r, a if self.config.provide_actions else a_masked], dim=-1)
+        targets = torch.cat([x_shift, r_shift, a_shift], dim=-1)
+        groundtruths = torch.cat([x_shift, r_shift, a_gt_shift], dim=-1)
+
         # groundtruths = torch.cat([x_shift, r_shift, a], dim=-1)
         self.log['inputs']['data'].append(inputs)
         self.log['targets']['data'].append(targets)
@@ -255,6 +418,7 @@ class ReversalEnvironment(Environment):
         self.log['p_A_high']['data'].append(p_A)
 
         return inputs, targets, groundtruths
+
 
     def get_trial(self, groundtruths=None):
         """
@@ -395,25 +559,6 @@ class ReversalEnvironment(Environment):
         perms = self.layouts[idxs]
 
         return self.perm_to_port_vectors(perms, self.config.x_dim)
-    
-    def split_data(self, data, dim=-1):
-        """
-        Split the data into different components based on configured dimensions.
-
-        Args:
-            data (torch.Tensor): Data tensor to be split.
-
-        Returns:
-            tuple: Tuple of tensors split according to configured dimensions.
-
-        Raises:
-            ValueError: If the data cannot be split into the specified dimensions.
-        """
-        x_dim, r_dim, a_dim = self.config.x_dim, self.config.r_dim, self.config.a_dim
-        try:
-            return torch.split(data, [x_dim, r_dim, a_dim], dim=dim)
-        except Exception as e:
-            raise ValueError(f"Error splitting data: {e}")
 
 
     def perm_to_port_vectors(self, perms, state_dim):
@@ -421,17 +566,17 @@ class ReversalEnvironment(Environment):
         batch_size = perm_mat.shape[0]
 
         init_vector = torch.zeros((batch_size, state_dim), dtype=self.config.dtype, device=self.dev)
-        init_vector[np.arange(batch_size), perm_mat[:, 0]] = 1  # initiation port
+        if self.config.init_step is not None: init_vector[np.arange(batch_size), perm_mat[:, 0]] = 1  # initiation port
 
         a_vector = torch.zeros((batch_size, state_dim), dtype=self.config.dtype, device=self.dev)
-        a_vector[np.arange(batch_size), perm_mat[:, 1]] = 1  # initiation port
+        a_vector[np.arange(batch_size), perm_mat[:, -2]] = 1  # initiation port
 
         b_vector = torch.zeros((batch_size, state_dim), dtype=self.config.dtype, device=self.dev)
-        b_vector[np.arange(batch_size), perm_mat[:, 2]] = 1  # initiation port
+        b_vector[np.arange(batch_size), perm_mat[:, -1]] = 1  # initiation port
 
         a_b_vector = torch.zeros((batch_size, state_dim), dtype=self.config.dtype, device=self.dev)
-        a_b_vector[np.arange(batch_size), perm_mat[:, 1]] = 1  # initiation port
-        a_b_vector[np.arange(batch_size), perm_mat[:, 2]] = 1  # initiation port
+        a_b_vector[np.arange(batch_size), perm_mat[:, -2]] = 1  # initiation port
+        a_b_vector[np.arange(batch_size), perm_mat[:, -1]] = 1  # initiation port
 
         return init_vector, a_b_vector, a_vector, b_vector
 
