@@ -21,7 +21,8 @@ class Conf():
     num_trials = 40  # per epoch; timesteps = num_trials * 4  (reward, delay, init, choice)
     num_trials_test = num_trials
     num_epochs_test = 10
-    batch_size = 256
+    batch_size = 128
+    n_batches = 50
 
     # trial params
     trial_len = 2
@@ -82,7 +83,6 @@ class Conf():
     output_dim = x_dim + r_dim + a_dim
 
     save_type = "SAVE_DICT"  # "SAVE_OBJECT"
-    n_batches = 50
     save_model_interval = 50
     init_hh_weight_gain = 0.5
 

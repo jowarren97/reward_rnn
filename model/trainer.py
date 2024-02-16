@@ -39,9 +39,6 @@ class Trainer():
         print(self.path)
         self.model_path = os.path.join(self.root, 'run_data', self.path)
         self.train_env, self.test_env = None, None
-        # criterion = nn.BCEWithLogitsLoss()
-        # self.scheduler = Scheduler(start_lr=config.start_lr, end_lr=config.end_lr, decay_epochs=config.decay_epochs)
-        # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=config.start_lr)
         self.scheduler_func = scheduler_func
         self.optimizer_func = optimizer_func
         self.optimizer_kwargs = optimizer_kwargs
