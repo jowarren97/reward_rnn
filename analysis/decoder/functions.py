@@ -10,6 +10,34 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix
 from tqdm import tqdm
 
+def train_test_split_layouts(layouts, *arrs, **kwargs):
+    print('Using custom train/test split')
+    test_size = kwargs['test_size'] / 2 if 'test_size' in kwargs else 0.2
+    np.random.seed(kwargs['random_state'] if 'random' in kwargs else None)
+
+    return_arrs = []
+    # exclude_port_set = np.random.choice(np.arange(Conf.port_dim), size=(int(Conf.port_dim*test_size)), replace=False)
+    exclude_port_set = np.arange(60)
+    truth_array = np.isin(layouts, exclude_port_set)
+    exclude_batch_idxs = np.all(truth_array, axis=1)
+    include_batch_idxs = np.any(truth_array, axis=1) == False
+
+    layouts_train, layouts_test = layouts[include_batch_idxs], layouts[exclude_batch_idxs]
+
+    for arr in arrs:
+        train_arr, test_arr = arr[include_batch_idxs], arr[exclude_batch_idxs]
+        return_arrs += [train_arr, test_arr]
+
+    print('Shapes: {}'.format([x.shape for x in return_arrs]))
+
+    # if np.isin(layouts_train, exclude_port_set).any():
+    #     raise ValueError(f'Port found in training set')
+    
+    # if not np.any(np.isin(layouts_test, exclude_port_set), axis=1).all():
+    #     raise ValueError(f'Port not found in testing set')
+
+    return tuple(return_arrs)
+
 def get_anomalous_batches(choices, ignore_first_trial=True):
     start = 0 if not ignore_first_trial else Conf.trial_len
     
@@ -101,7 +129,80 @@ def plot_conf_matrices(conf_matrices, bins, n_bins, bin_edges=None, mask_type='a
     plt.tight_layout()
 
 
-def train_decoders(hiddens, targets, layouts, exclude_batch_idxs=None, n_class=None, T=None, **kwargs):
+# def train_decoders(hiddens, targets, layouts, exclude_batch_idxs=None, n_class=None, T=None, **kwargs):
+#     if exclude_batch_idxs is not None:
+#         hiddens_masked = np.delete(hiddens.copy(), exclude_batch_idxs, axis=0)
+#         targets_masked = np.delete(targets.copy(), exclude_batch_idxs, axis=0)
+#         layouts_masked = np.delete(layouts.copy(), exclude_batch_idxs, axis=0)
+#     else:
+#         hiddens_masked = hiddens.copy()
+#         targets_masked = targets.copy()
+#         layouts_masked = layouts.copy()
+    
+#     accuracies, conf_matrices, chance = [], [], []
+#     y_tests, y_preds = [], []
+
+#     if hiddens.ndim != 3:
+#         raise ValueError('hiddens must be a 3D array with shape (n_batches, n_steps, n_neurons)')
+#     if targets.ndim not in [1,2]:
+#         raise ValueError('targets must be a 1D or 2D array with shape (n_batches, ) or (n_batches, n_steps)')
+#     if targets.ndim == 2 and targets.shape[1] != hiddens.shape[1]:
+#         raise ValueError('targets shape[1] must match hiddens shape[1]')
+    
+#     if T is None or T > hiddens_masked.shape[1]: T = hiddens_masked.shape[1]
+#     conf_labels = np.unique(targets_masked) if n_class is None else np.arange(n_class)
+
+#     if set(np.unique(targets_masked)).issubset([True, False]):
+#         multiclass = False
+#     else:
+#         multiclass = True
+#     print(f'Using multiclass: {multiclass}')
+
+
+#     for step in tqdm(range(T)):
+#         # y = A_good[:, step].ravel()
+#         if targets_masked.ndim == 1:
+#             y = targets_masked
+#         else:
+#             y = targets_masked[:,step].ravel()
+#         X = hiddens_masked[:,step]
+
+#         X_train, X_test, y_train, y_test, layouts_train, layouts_test = train_test_split(X, y, layouts_masked, test_size=0.2, random_state=40)
+
+#         if np.unique(y_test).size < 2:
+#             accuracies.append(np.nan)
+#             chance.append(np.nan)
+#             continue
+        
+#         # # Optionally, standardize features
+#         scaler = StandardScaler()
+#         X_train_scaled = scaler.fit_transform(X_train)
+#         X_test_scaled = scaler.transform(X_test)
+
+#         # Define and train the logistic regression model
+#         model = LogisticRegression(solver='lbfgs', class_weight='balanced', **kwargs)
+#         model.fit(X_train_scaled, y_train)
+
+#         # Predictions
+#         y_pred = model.predict(X_test_scaled)
+#         y_tests.append(y_test)
+#         y_preds.append(y_pred)
+
+#         # Evaluate the model
+#         accuracy = accuracy_score(y_test, y_pred)
+#         conf_matrix = confusion_matrix(y_test, y_pred, labels=conf_labels, normalize='true')
+
+#         accuracies.append(accuracy)
+#         conf_matrices.append(conf_matrix)
+#         chance.append(1 / len(np.unique(y_test)))
+
+#         # print(f"Step {step} accuracy: {accuracy}")
+#         # print(f"Confusion Matrix:\n{conf_matrix}")
+#         # print(f"Classification Report:\n{report}")
+#     return accuracies, conf_matrices, chance, (layouts_test, np.array(y_tests), np.array(y_preds))
+    
+def train_decoders(hiddens, targets, layouts, scale=True, exclude_batch_idxs=None, n_class=None, T=None, **kwargs):
+    random_state = kwargs['random_state'] if 'random_state' in kwargs else 0
     if exclude_batch_idxs is not None:
         hiddens_masked = np.delete(hiddens.copy(), exclude_batch_idxs, axis=0)
         targets_masked = np.delete(targets.copy(), exclude_batch_idxs, axis=0)
@@ -130,33 +231,48 @@ def train_decoders(hiddens, targets, layouts, exclude_batch_idxs=None, n_class=N
         multiclass = True
     print(f'Using multiclass: {multiclass}')
 
+    hiddens_train, hiddens_test, targets_train, targets_test, layouts_train, layouts_test = train_test_split(hiddens_masked, targets_masked, layouts_masked, test_size=0.2, random_state=random_state)
+
+    if scale:
+        mean = np.mean(hiddens_train, axis=(0,1))
+        std = np.mean(hiddens_train, axis=(0,1))
+        if mean.shape[-1] != hiddens_train.shape[-1]:
+            raise ValueError('Mean shape must match X_train shape')
+        
+        hiddens_train_scaled = (hiddens_train - mean) / std
+        hiddens_test_scaled = (hiddens_test - mean) / std
+
+        nan_idxs = np.where(np.any(np.isnan(hiddens_train_scaled)==False, axis=(0,1)))[0]
+        hiddens_train_scaled = hiddens_train_scaled[:,:,nan_idxs]
+        hiddens_test_scaled = hiddens_test_scaled[:,:,nan_idxs]
+    else:
+        hiddens_train_scaled = hiddens_train
+        hiddens_test_scaled = hiddens_test
+
 
     for step in tqdm(range(T)):
         # y = A_good[:, step].ravel()
-        if targets_masked.ndim == 1:
-            y = targets_masked
+        if targets_train.ndim == 1:
+            y_train = targets_train
+            y_test = targets_test
         else:
-            y = targets_masked[:,step].ravel()
-        X = hiddens_masked[:,step]
+            y_train = targets_train[:,step].ravel()
+            y_test = targets_test[:,step].ravel()
 
-        X_train, X_test, y_train, y_test, layouts_train, layouts_test = train_test_split(X, y, layouts_masked, test_size=0.2, random_state=40)
+        X_train = hiddens_train_scaled[:,step]
+        X_test = hiddens_test_scaled[:,step]
 
-        if np.unique(y_test).size < 2:
+        if np.unique(y_train).size < 2:
             accuracies.append(np.nan)
             chance.append(np.nan)
             continue
-        
-        # # Optionally, standardize features
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_test_scaled = scaler.transform(X_test)
 
         # Define and train the logistic regression model
         model = LogisticRegression(solver='lbfgs', class_weight='balanced', **kwargs)
-        model.fit(X_train_scaled, y_train)
+        model.fit(X_train, y_train)
 
         # Predictions
-        y_pred = model.predict(X_test_scaled)
+        y_pred = model.predict(X_test)
         y_tests.append(y_test)
         y_preds.append(y_pred)
 
@@ -174,8 +290,110 @@ def train_decoders(hiddens, targets, layouts, exclude_batch_idxs=None, n_class=N
     return accuracies, conf_matrices, chance, (layouts_test, np.array(y_tests), np.array(y_preds))
     
 
-def train_decoders_looped(hiddens, targets, layouts, train_steps, T=None, scale=False, shuffle=False, n_class=None, fold_trials=True, exclude_batch_idxs=None, **kwargs):
-    np.random.seed(None if 'random_state' not in kwargs else kwargs['random_state'])
+
+# def train_decoders_looped(hiddens, targets, layouts, train_steps, T=None, scale_old=False, scale_new=False, shuffle=False, n_class=None, fold_trials=True, exclude_batch_idxs=None, **kwargs):
+#     np.random.seed(None if 'random_state' not in kwargs else kwargs['random_state'])
+#     if fold_trials:
+#         if (len(train_steps) > Conf.trial_len) and (len(train_steps) % Conf.trial_len != 0):
+#             raise ValueError('Length of train_steps must be a multiple of Conf.trial_len')
+#         if list(train_steps) != list(range(min(train_steps), max(train_steps)+1)):
+#             raise ValueError('train_steps must be consecutive')
+    
+#     if T is None or T > hiddens.shape[1]: T = hiddens.shape[1]
+
+#     if exclude_batch_idxs is not None:
+#         include_batch_idxs = np.array(list(set(range(hiddens.shape[0])) - set(exclude_batch_idxs)))
+#         print(len(include_batch_idxs), len(exclude_batch_idxs))
+#         hiddens_masked = hiddens.copy()[include_batch_idxs]
+#         targets_masked = targets.copy()[include_batch_idxs]
+#         layouts_masked = layouts.copy()[include_batch_idxs]
+#     else:
+#         hiddens_masked = hiddens.copy()
+#         targets_masked = targets.copy()
+#         layouts_masked = layouts.copy()
+
+#     conf_labels = np.unique(targets_masked) if n_class is None else np.arange(n_class)
+
+#     X_train, X_test, y_train, y_test, layout_train, layout_test = train_test_split(hiddens_masked, targets_masked, layouts_masked, test_size=0.2, random_state=42)
+
+
+#     if scale_new:
+#         for i in range(y_train.shape[1]):
+#             scaler = StandardScaler()
+#             z = X_train[:,i,:].copy()
+#             X_train[:,i,:] = scaler.fit_transform(X_train[:,i,:])
+#             X_test[:,i,:] = scaler.transform(X_test[:,i,:])
+
+#     print(X_train.shape, X_test.shape, y_train.shape, y_test.shape, layout_train.shape, layout_test.shape)
+
+#     X_train_sub = X_train[:, train_steps, :]
+#     y_train_sub = y_train[:, train_steps]
+
+#     # print(X_train_sub.shape, y_train_sub.shape)
+
+#     if fold_trials:
+#         T_train = np.minimum(len(train_steps), Conf.trial_len)
+#         X_train_sub = X_train_sub.reshape(-1, T_train, X_train_sub.shape[-1])
+#         y_train_sub = y_train_sub.reshape(-1, T_train)
+#     else:
+#         T_train = len(train_steps)
+
+#     print(f'Train/test:\t{X_train.shape[0]},\t{X_test.shape[0]}\nFolded:\t\t{X_train_sub.shape[0]}')
+
+#     models, scalers = [], []
+#     for step in tqdm(range(T_train)):
+#         X = X_train_sub[:, step, :]
+#         y = y_train_sub[:, step]
+
+#         perm = np.random.permutation(X.shape[0])
+#         if shuffle: X, y = X[perm], y[perm]
+        
+#         # # # Optionally, standardize features
+#         if scale_old:
+#             scaler = StandardScaler()
+#             X = scaler.fit_transform(X)
+#             scalers.append(scaler)
+#         else:
+#             scalers.append(None)
+
+#         # Define and train the logistic regression model
+#         model = LogisticRegression(solver='lbfgs', class_weight='balanced', **kwargs)
+#         model.fit(X, y)
+
+#         models.append(model)
+
+#     accuracies_all, conf_matrices_all = [], []
+#     for model, scaler in zip(models, scalers):
+#         accuracies, conf_matrices, y_tests, y_preds = [], [], [], []
+#         for step in tqdm(range(T)):
+#             X = X_test[:, step, :]
+#             y = y_test[:, step]
+
+#             # Optionally, standardize features
+#             if scale_old: X = scaler.transform(X)
+            
+#             y_pred = model.predict(X)
+#             y_tests.append(y)
+#             y_preds.append(y_pred)
+
+#             # Evaluate the model
+#             accuracy = accuracy_score(y, y_pred)
+#             accuracies.append(accuracy)
+
+#             conf_matrix = confusion_matrix(y, y_pred, labels=conf_labels)
+#             conf_matrices.append(conf_matrix)
+
+#         accuracies_all.append(accuracies)
+#         conf_matrices_all.append(conf_matrices)
+
+#     return accuracies_all, conf_matrices_all
+#             # print(f"Step {step} accuracy: {accuracy}")
+#             # print(f"Confusion Matrix:\n{conf_matrix}")
+#             # print(f"Classification Report:\n{report}")
+
+def train_decoders_looped(hiddens, targets, layouts, train_steps, n_class, T=None, scale=False, fold_trials=True, exclude_batch_idxs=None, by_port=False, **kwargs):
+    random_state = kwargs['random_state'] if 'random_state' in kwargs else None
+    np.random.seed(random_state)
     if fold_trials:
         if (len(train_steps) > Conf.trial_len) and (len(train_steps) % Conf.trial_len != 0):
             raise ValueError('Length of train_steps must be a multiple of Conf.trial_len')
@@ -197,55 +415,63 @@ def train_decoders_looped(hiddens, targets, layouts, train_steps, T=None, scale=
 
     conf_labels = np.unique(targets_masked) if n_class is None else np.arange(n_class)
 
-    X_train, X_test, y_train, y_test, layout_train, layout_test = train_test_split(hiddens_masked, targets_masked, layouts_masked, test_size=0.2, random_state=42)
+    if by_port:
+        hiddens_train, hiddens_test, targets_train, targets_test  = train_test_split_layouts(layouts_masked, hiddens_masked, targets_masked, test_size=0.2, random_state=random_state)
+    else:
+        print(hiddens_masked.shape, targets_masked.shape)
+        hiddens_train, hiddens_test, targets_train, targets_test = train_test_split(hiddens_masked, targets_masked, test_size=0.2, random_state=random_state)
 
-    print(X_train.shape, X_test.shape, y_train.shape, y_test.shape, layout_train.shape, layout_test.shape)
+    if scale:
+        mean = np.mean(hiddens_train, axis=(0,1))
+        std = np.mean(hiddens_train, axis=(0,1))
+        if mean.shape[-1] != hiddens_train.shape[-1]:
+            raise ValueError('Mean shape must match X_train shape')
+        
+        hiddens_train_scaled = (hiddens_train - mean) / std
+        hiddens_test_scaled = (hiddens_test - mean) / std
 
-    X_train_sub = X_train[:, train_steps, :]
-    y_train_sub = y_train[:, train_steps]
+        nan_idxs = np.where(np.any(np.isnan(hiddens_train_scaled)==False, axis=(0,1)))[0]
+        hiddens_train_scaled = hiddens_train_scaled[:,:,nan_idxs]
+        hiddens_test_scaled = hiddens_test_scaled[:,:,nan_idxs]
+    else:
+        hiddens_train_scaled = hiddens_train
+        hiddens_test_scaled = hiddens_test
 
-    print(X_train_sub.shape, y_train_sub.shape)
+    print('Finished scaling.')
+
+    hiddens_train_sub = hiddens_train_scaled[:, train_steps, :]
+    targets_train_sub = targets_train[:, train_steps]
 
     if fold_trials:
         T_train = np.minimum(len(train_steps), Conf.trial_len)
-        X_train_sub = X_train_sub.reshape(-1, T_train, X_train_sub.shape[-1])
-        y_train_sub = y_train_sub.reshape(-1, T_train)
+        hiddens_train_sub = hiddens_train_sub.reshape(-1, T_train, hiddens_train_sub.shape[-1])
+        targets_train_sub = targets_train_sub.reshape(-1, T_train)
     else:
         T_train = len(train_steps)
 
-    print(X_train_sub.shape, y_train_sub.shape)
+    print(f'Train/test:\t{hiddens_train_scaled.shape},\t{hiddens_test_scaled.shape}\nFolded:\t\t{hiddens_train_sub.shape}')
 
-    models, scalers = [], []
+    models, class_idxs = [], []
+    losses_train, losses_test = np.zeros((T_train, T)), np.zeros((T_train, T))
+    
     for step in tqdm(range(T_train)):
-        X = X_train_sub[:, step, :]
-        y = y_train_sub[:, step]
-
-        perm = np.random.permutation(X.shape[0])
-        if shuffle: X, y = X[perm], y[perm]
-        
-        # # # Optionally, standardize features
-        if scale:
-            scaler = StandardScaler()
-            X = scaler.fit_transform(X)
-            scalers.append(scaler)
-        else:
-            scalers.append(None)
+        X = hiddens_train_sub[:, step, :]
+        y = targets_train_sub[:, step]
 
         # Define and train the logistic regression model
         model = LogisticRegression(solver='lbfgs', class_weight='balanced', **kwargs)
         model.fit(X, y)
 
         models.append(model)
+        class_idxs.append(np.unique(y))
+
 
     accuracies_all, conf_matrices_all = [], []
-    for model, scaler in zip(models, scalers):
+    for i, model in enumerate(models):
         accuracies, conf_matrices, y_tests, y_preds = [], [], [], []
-        for step in tqdm(range(T)):
-            X = X_test[:, step, :]
-            y = y_test[:, step]
-
-            # Optionally, standardize features
-            if scale: X = scaler.transform(X)
+        for step in range(T):
+            X = hiddens_test_scaled[:, step, :]
+            y = targets_test[:, step]
             
             y_pred = model.predict(X)
             y_tests.append(y)
@@ -258,10 +484,25 @@ def train_decoders_looped(hiddens, targets, layouts, train_steps, T=None, scale=
             conf_matrix = confusion_matrix(y, y_pred, labels=conf_labels)
             conf_matrices.append(conf_matrix)
 
+            p_train = model.predict_log_proba(hiddens_train_scaled[:, step, :])
+            sparse_idxs = class_idxs[i]
+            p_train_sparse = np.nan * np.zeros((p_train.shape[0], n_class))
+            p_train_sparse[:, sparse_idxs] = p_train
+                                      
+            idxs = (np.arange(p_train.shape[0]), targets_train[:, step])
+            losses_train[i, step] = np.nanmean(p_train_sparse[idxs])
+
+            p_test = model.predict_log_proba(hiddens_test_scaled[:, step, :])
+            p_test_sparse = np.nan * np.ones((p_test.shape[0], n_class))
+            p_test_sparse[:, sparse_idxs] = p_test
+
+            idxs = (np.arange(p_test.shape[0]), targets_test[:, step])
+            losses_test[i, step] = np.nanmean(p_test_sparse[idxs])
+
         accuracies_all.append(accuracies)
         conf_matrices_all.append(conf_matrices)
 
-    return accuracies_all, conf_matrices_all
+    return accuracies_all, conf_matrices_all, losses_train, losses_test
             # print(f"Step {step} accuracy: {accuracy}")
             # print(f"Confusion Matrix:\n{conf_matrix}")
             # print(f"Classification Report:\n{report}")
@@ -332,6 +573,8 @@ def train_decoders_looped_port(port, hiddens, targets, layouts, train_steps, T=N
         model.fit(X, y)
 
         models.append(model)
+
+    print('DONE FITTING')
 
     accuracies_all, conf_matrices_all = [], []
     for model, scaler in zip(models, scalers):

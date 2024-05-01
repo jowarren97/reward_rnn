@@ -1,15 +1,16 @@
 import torch
 
 class BayesAgent:
-    def __init__(self, config, a_vector, b_vector):
+    def __init__(self, config, a_vector, b_vector, p_init=0.5):
         self.config = config
         self.batch_size = config.batch_size
         self.p = config.reward_prob  # reward contingency for high port
-        self.p_A_high = 0.5 * torch.ones((self.batch_size, 1), device=self.config.env_dev)  # batched initial beliefs
+        self.p_A_high = p_init * torch.ones((self.batch_size, 1), device=self.config.env_dev)  # batched initial beliefs
         self.last_choice = torch.randint(2, (self.batch_size, 1), device=self.config.env_dev)
         self.a_vector = a_vector
         self.b_vector = b_vector
         self.output_dim = config.action_dim
+        self.p_init = p_init
 
     def update_beliefs(self, reward):
         """
@@ -45,7 +46,7 @@ class BayesAgent:
         switch_mask = torch.unsqueeze(switch_mask, dim=-1)
         self.a_vector = torch.where(switch_mask, a_vector, self.a_vector)
         self.b_vector = torch.where(switch_mask, b_vector, self.b_vector)
-        self.p_A_high = torch.where(switch_mask, 0.5, self.p_A_high)
+        self.p_A_high = torch.where(switch_mask, self.p_init, self.p_A_high)
 
     def choose_action(self):
         """

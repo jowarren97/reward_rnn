@@ -2,6 +2,24 @@ import torch
 import os
 import os
 
+"""
+657 port100 provide_action true
+658 port100 provide_action false
+659 port50 provide action false
+660 port50 provide action true
+
+661 port50 w0                           0.008, 0.07, 0.011
+663 port50 w1                           0.001, 0.07, 0.007
+664 port100 w1                          0.002, 0.07, 0.012
+665 port200 w1 h1024                    0.002, 0.003, 0.018 ***
+666 port9 w1                            X
+668 port50 w1 h1024?                    0.007, 0.08, 0.008
+692 port100 w1 h1024?                   0.001, 0.02, 0.011
+696 port100 w1 512 provide_action f     0.01,  0.02, 0.03
+
+4555696 port100 w1 h512 provide_action false
+"""
+
 
 class Conf():
     dtype = torch.float32
@@ -28,8 +46,9 @@ class Conf():
     trial_len = 2
     pre_trial = True
     # trial_len = 5
-    port_dim = 100
+    port_dim = 200
     # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 5, 6, 3, 7
+    # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, None, 1, 2, None, 3
     r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, None, None, None, None, 1
     # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 1, 4, 5, 2, 6
     # r_step, init_step, a_step, b_step, init_choice_step, ab_choice_step = 0, 2, 3, 4, 2, 4
@@ -42,7 +61,7 @@ class Conf():
     state_dim = port_dim + 2
     action_dim = port_dim + 1  # onehot: 9 port choices, 1 do-nothing choice
     input_dim = state_dim + action_dim  # onehot: 9 port lights, 2 reward input
-    hidden_dim = 512
+    hidden_dim = 1024
 
     # experimental stuff
     sample = False  # whether to sample action from RNN logits, or take max logit as action 
@@ -53,7 +72,7 @@ class Conf():
     weight_regularization = 1e-6 #1e-7  # weight regularization
     activity_regularization = 3e-4 #1e-4
     predict_x = True
-    provide_actions = True
+    provide_actions = False
     output_dim = input_dim if predict_x else action_dim
 
     # task params
@@ -84,7 +103,7 @@ class Conf():
 
     save_type = "SAVE_DICT"  # "SAVE_OBJECT"
     save_model_interval = 50
-    init_hh_weight_gain = 0.5
+    init_hh_weight_gain = 1.0
 
     start_lr = 1e-4
     end_lr = 1e-5

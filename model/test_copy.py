@@ -15,17 +15,25 @@ Conf.num_epochs_test = 1
 print(Conf.num_trials_test)
 # load_dir = 'run_data_08_256_l2_1e6_l2_3e4'
 # load_dir = 'run_data'
-load_dir = '/Users/jo/notebooks_paper/run_data/2024-02-05/Untitled/18:37'
+load_dir = '/Users/jo/notebooks_paper/run_data/best/'
 # load_dir = '/Users/jo/notebooks_paper/run_data/2024-01-16/5c363ba/p_0.8_lr_1e-04-1e-05_batchsize_64_h_256_wreg_1e-06_hreg_3e-04_thresh_None_wgain_5e-01_lrdecay_10000_dropoutdecay_1000/16:27/'
 # load_dir = '/Users/jo/notebooks_paper/model/run_data/2023-12-12/cd6e787/p_0.8_lr_1e-04_batchsize_64_h_256_wreg_1e-06_hreg_3e-04_thresh_None_wgain_2e-01/11:50/'
 # Conf.save_dir = os.path.join(os.getcwd(), 'run_data_remote')
 Conf.save_dir = load_dir
-
+print(os.path.exists(os.path.join(load_dir, 'weights_0.pth')))
 # Initialize model, curriculum, loss function and optimizer
 model = SimpleRNN(Conf)
-model.load_state_dict(torch.load(os.path.join(load_dir, 'weights_1050.pth'), map_location=torch.device(Conf.dev)))
+model.load_state_dict(torch.load(os.path.join(load_dir, 'weights_2250.pth'), map_location=torch.device(Conf.dev)))
 data = np.load(os.path.join(load_dir, 'train_test_split.npz'))
 train_layouts, test_layouts, all_layouts = data['train'], data['test'], data['all']
+
+include_batches = np.all(np.isin(train_layouts, np.arange(40)), axis=1)
+train_layouts = train_layouts[include_batches]
+include_batches = np.all(np.isin(test_layouts, np.arange(40)), axis=1)
+test_layouts = test_layouts[include_batches]
+include_batches = np.all(np.isin(all_layouts, np.arange(40)), axis=1)
+all_layouts = all_layouts[include_batches]
+
 print('len', len(test_layouts))
 # train_layouts, test_layouts, all_layouts = train_test_split()
 train_env, test_env, all_env = ReversalEnvironment(Conf, train_layouts), ReversalEnvironment(Conf, test_layouts), ReversalEnvironment(Conf, all_layouts)
@@ -55,7 +63,6 @@ def step(model, env, num_trials, logger=None):
     return
 
 
-model.eval()
 
 for i in range(Conf.num_epochs_test):
     print('TRAIN')

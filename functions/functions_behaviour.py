@@ -18,7 +18,7 @@ def session_plot_moving_average(session):
     block = session.trial_data['block']; choices = session.trial_data['choices']; n_trials = session.trial_data['n_trials']
     outcome = session.trial_data['outcomes']; state = session.trial_data['state'];  forced_trials = session.trial_data['forced_trial']
     forced_array = np.where(forced_trials == 1)[0]; forced_trials_sum = sum(forced_trials)
-
+    
     # exclude without forced trials 
     choices = np.delete(choices, forced_array); block = np.delete(block, forced_array)
     n_trials = n_trials - forced_trials_sum; outcome =  np.delete(outcome, forced_array);  state =  np.delete(state, forced_array)
@@ -110,8 +110,8 @@ def trials_till_reversal_plot(experiment):
     res = aovrm.fit()
      
     # print stats
-    print('Problem:' + ' '+ 'df = '+ ' '+ str(np.int(res.anova_table['Num DF'][0])) + ', ' + str(np.int(res.anova_table['Den DF'][0])), 'F' + ' = ' + str(np.round(res.anova_table['F Value'][0],3)),'p' + ' = ' + str(np.round(res.anova_table['Pr > F'][0], 3)));
-    print('Reversal:' + ' '+ 'df = '+ ' '+ str(np.int(res.anova_table['Num DF'][1])) + ', ' + str(np.int(res.anova_table['Den DF'][1])), 'F' + ' = ' + str(np.round(res.anova_table['F Value'][1],3)),'p' + ' = ' + str(np.round(res.anova_table['Pr > F'][1], 3)));
+    print('Problem:' + ' '+ 'df = '+ ' '+ str(int(res.anova_table['Num DF'][0])) + ', ' + str(int(res.anova_table['Den DF'][0])), 'F' + ' = ' + str(np.round(res.anova_table['F Value'][0],3)),'p' + ' = ' + str(np.round(res.anova_table['Pr > F'][0], 3)));
+    print('Reversal:' + ' '+ 'df = '+ ' '+ str(int(res.anova_table['Num DF'][1])) + ', ' + str(int(res.anova_table['Den DF'][1])), 'F' + ' = ' + str(np.round(res.anova_table['F Value'][1],3)),'p' + ' = ' + str(np.round(res.anova_table['Pr > F'][1], 3)));
    
     # Plot individual subjects
     mean_thre_subj = np.mean(reversal_to_threshold,axis = 2) 
@@ -340,8 +340,8 @@ def out_of_sequence(experiment, first_task_only = False):
     res = aovrm.fit()
      
      # print stats
-    print('Problem:' + ' '+ 'df = '+ ' '+ str(np.int(res.anova_table['Num DF'][0])) + ', ' + str(np.int(res.anova_table['Den DF'][0])), 'F' + ' = ' + str(np.round(res.anova_table['F Value'][0],3)),'p' + ' = ' + str(np.round(res.anova_table['Pr > F'][0], 3)));
-    print('Reversal:' + ' '+ 'df = '+ ' '+ str(np.int(res.anova_table['Num DF'][1])) + ', ' + str(np.int(res.anova_table['Den DF'][1])), 'F' + ' = ' + str(np.round(res.anova_table['F Value'][1],3)),'p' + ' = ' + str(np.round(res.anova_table['Pr > F'][1], 3)));
+    print('Problem:' + ' '+ 'df = '+ ' '+ str(int(res.anova_table['Num DF'][0])) + ', ' + str(int(res.anova_table['Den DF'][0])), 'F' + ' = ' + str(np.round(res.anova_table['F Value'][0],3)),'p' + ' = ' + str(np.round(res.anova_table['Pr > F'][0], 3)));
+    print('Reversal:' + ' '+ 'df = '+ ' '+ str(int(res.anova_table['Num DF'][1])) + ', ' + str(int(res.anova_table['Den DF'][1])), 'F' + ' = ' + str(np.round(res.anova_table['F Value'][1],3)),'p' + ' = ' + str(np.round(res.anova_table['Pr > F'][1], 3)));
     
     if first_task_only: 
         bad_pokes = bad_pokes[:,1:,:]

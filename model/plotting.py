@@ -248,10 +248,13 @@ def plot_trials(inputs, ground_truth, targets, choices, p_A, b=0, trials=200, sf
 #             fig.savefig(fpath)              
 
 
-def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
+def plot_average_layout_hists(means, neur_ids=None, overwrite=False, show=True):
     neur_ids = neur_ids if neur_ids is not None else np.arange(means.shape[-2])
     separate_figures = True
-    conds = [Conf.init_step, Conf.a_step, Conf.b_step] if Conf.init_step is not None else [Conf.a_step, Conf.b_step]
+    # conds = [Conf.init_step, Conf.a_step, Conf.b_step] if Conf.init_step is not None else [Conf.a_step, Conf.b_step]
+    conds = [0, 1]
+    n_ports = means.shape[1]
+    print('n_ports', n_ports)
     # init_step, a_step, b_step = 2, 3, 4
     # load_dir = '../run_data_1_128_l2_1e6_l2_3e4'
 
@@ -263,10 +266,10 @@ def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
     if not separate_figures:
         raise NotImplementedError()
     else:
-        n_col = Conf.port_dim
+        n_col = n_ports
         n_row = len(conds)
         # Adjusting figure size based on the number of batches and neurons
-        fig_width = Conf.port_dim * 16/9  # Adjust width as needed
+        fig_width = n_ports * 16/9  # Adjust width as needed
         fig_height = 3 * n_row  # Adjust height as needed
         save_dir = os.path.join(Conf.save_dir, 'separate_figs', 'polar', 'mean', f'hist_griddy_{n_p_bins}')
         print(save_dir)
@@ -290,7 +293,7 @@ def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
         else:
             raise NotImplementedError()
 
-        for port_id in range(Conf.port_dim):
+        for port_id in range(n_ports):
             for row, step in enumerate(conds):
                 ax = axes[row, port_id]
                 ax.xaxis.set_visible(False)
@@ -306,7 +309,9 @@ def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
                 # if row == n_row - 1:
                 #     ax.set_xlabel('p')
 
-                title = (str(port_id) if row == 0 else 'x') + ', ' + (str(port_id) if row == 1 else 'x') + '/' + (str(port_id) if row == 2 else 'x')
+                # title = (str(port_id) if row == 0 else 'x') + ', ' + (str(port_id) if row == 1 else 'x') + '/' + (str(port_id) if row == 2 else 'x')
+                # title = (str(port_id) if row == 0 else 'x') + '/' + (str(port_id) if row == 1 else 'x')
+                title = f'({port_id}, X)' if row==0 else f'(X, {port_id})'
                 ax.set_title(title, fontsize=12, fontweight='bold')
 
                 bin_heights = np.zeros((Conf.trial_len, n_p_bins))
@@ -317,7 +322,7 @@ def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
 
                 # Parameters for inner axes
                 inner_ax_width = "100%"  # Example width
-                inner_ax_height = "5%" # Example height
+                inner_ax_height = "33%" # Example height
 
                 y_shift = (1 - 0.3)/Conf.trial_len
                 # Create and plot in inner axes
@@ -340,14 +345,15 @@ def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
                     
                     # Turn off tick labels
                     if port_id == 0:
-                        y_labels = ['0\n0' for _ in range(Conf.trial_len)]
-                        if Conf.init_step is not None: y_labels[Conf.init_step] = '0\ninit'
-                        if Conf.init_step is not None: y_labels[Conf.init_choice_step] = 'init\n0'
-                        y_labels[Conf.a_step] = '0\na'
-                        y_labels[Conf.b_step] = '0\nb'
-                        y_labels[Conf.ab_choice_step] = 'ch\n0'
-                        y_labels[Conf.r_step] = '0\nrew'
-                        inner_ax.set_ylabel(np.roll(y_labels, shift=-Conf.init_step if Conf.init_step is not None else 0)[i], fontsize=6)
+                        # y_labels = ['0\n0' for _ in range(Conf.trial_len)]
+                        # if Conf.init_step is not None: y_labels[Conf.init_step] = '0\ninit'
+                        # if Conf.init_step is not None: y_labels[Conf.init_choice_step] = 'init\n0'
+                        # # y_labels[Conf.a_step] = '0\na'
+                        # # y_labels[Conf.b_step] = '0\nb'
+                        # y_labels[Conf.ab_choice_step] = 'ch\n0'
+                        # y_labels[Conf.r_step] = '0\nrew'
+                        y_labels = [f'step {s}' for s in range(Conf.trial_len)]
+                        inner_ax.set_ylabel(np.roll(y_labels, shift=-Conf.init_step if Conf.init_step is not None else 0)[i], fontsize=8)
                     inner_ax.set_yticks([])
                     inner_ax.spines['right'].set_visible(False)
                     inner_ax.spines['top'].set_visible(False)
@@ -357,7 +363,7 @@ def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
                         n_ticks = 10
                         ticks = np.linspace(0, 1, n_ticks+1, endpoint=True)
                         assert 0.5 in ticks
-                        inner_ax.set_xticks(ticks, ['' if tick!=0.5 else 'p(B)' for tick in ticks])
+                        inner_ax.set_xticks(ticks, ['' if tick!=0.5 else 'p(A)' for tick in ticks])
                         inner_ax.tick_params(axis='x', which='both', length=2, pad=8)
                         # inner_ax.set_xlabel('p(B)', fontsize=6)
                     else:
@@ -370,47 +376,92 @@ def plot_average_layout_hists(means, neur_ids=None, overwrite=False):
             cbar = fig.colorbar(cm.ScalarMappable(norm=None, cmap=cmap), cax=cbar_ax, orientation='horizontal')
             # Set the colorbar ticks and labels
             cbar.set_ticks([0, 1])
-            cbar.set_ticklabels(['A', 'B'])
+            cbar.set_ticklabels(['B', 'A'])
             cbar.ax.tick_params(direction='in', pad=3, labelsize=10)
 
-            fig.text(0.002, 0.998, 'init, a/b', fontsize=12, fontweight='bold', ha='left', va='top')   
-
-            fig.savefig(fpath)      
-            plt.close()        
+            fig.text(0.002, 0.998, 'Title legend: (port a, port b)', fontsize=12, fontweight='bold', ha='left', va='top')   
+ 
+        fig.savefig(fpath)      
+        if show:
+            plt.show() 
+        else:  
+            plt.close()    
                      
                     
-def get_means(p_A, inputs_arg_trial, hidden_trial, anomalous_batches, n_p_bins=50): 
-    n_neurons = hidden_trial.shape[-1]
-    bin_edges = np.linspace(1, 0, n_p_bins+1)[1:]  # Creates 5 edges for 4 bins
+# def get_means(p_A, inputs_arg_trial, hidden_trial, anomalous_batches, n_p_bins=50): 
+#     n_neurons = hidden_trial.shape[-1]
+#     bin_edges = np.linspace(1, 0, n_p_bins+1)[1:]  # Creates 5 edges for 4 bins
+#     bins = np.digitize(p_A, bin_edges) 
+#     conds = [Conf.init_step, Conf.a_step, Conf.b_step] if Conf.init_step is not None else [Conf.a_step, Conf.b_step]
+#     h_mean_all_layouts = np.zeros((len(conds), Conf.port_dim, n_p_bins, n_neurons, Conf.trial_len))
+#     # for k in neur_ids:
+#     #     vmax = np.percentile(hidden_trial[:,:,:,k], 99)
+
+#     # inputs_arg_trial = np.argmax(inputs_trial[:,:,:Conf.x_dim], axis=-1)[:,0,:]
+#     # inputs_arg_trial = np.repeat(inputs_arg_trial[:, np.newaxis, :], inputs_trial.shape[1], axis=1)
+
+#     for port_id in range(Conf.port_dim):
+#         for row, step in enumerate(conds):
+#             step_type_trial_mask = inputs_arg_trial[:, :, step] == port_id
+#             if len(anomalous_batches):
+#                 anomaly_mask = anomalous_batches[:, np.newaxis] * np.ones_like(step_type_trial_mask, dtype=bool)
+#             # print(step_type_trial_mask.shape, anomaly_mask.shape)
+#                 mask = np.logical_and(np.logical_not(anomaly_mask), step_type_trial_mask)
+#             else:
+#                 mask = np.expand_dims(step_type_trial_mask, -1)
+
+#             for bin_id in range(n_p_bins):
+#                 p_bin_mask = bins == bin_id
+
+#                 if np.any(p_bin_mask):
+#                     trial_mask = np.logical_and(mask, p_bin_mask)
+
+#                     trial_idxs = np.where(trial_mask)
+#                     # print(port_id, ['init', 'a', 'b'][row], bin_id, trial_idxs[0].shape)
+
+#                     h = hidden_trial[trial_idxs[0], trial_idxs[1], :, :]
+#                     if h.shape[0]:
+#                         h_mean = np.mean(h, axis=0)
+#                         h_mean_all_layouts[row, port_id, bin_id, :, :] = np.transpose(h_mean, (1,0))
+
+#     p_A_bin_counts = np.bincount(bins.flatten(), minlength=n_p_bins)
+
+#     return h_mean_all_layouts, p_A_bin_counts
+
+def get_means(p_A, layouts, hiddens, n_p_bins=20, n_ports=10): 
+    n_neurons = hiddens.shape[-1]
+    bin_edges = np.linspace(0, 1, n_p_bins+1)[1:]  # Creates 5 edges for 4 bins
     bins = np.digitize(p_A, bin_edges) 
-    conds = [Conf.init_step, Conf.a_step, Conf.b_step] if Conf.init_step is not None else [Conf.a_step, Conf.b_step]
-    h_mean_all_layouts = np.zeros((len(conds), Conf.port_dim, n_p_bins, n_neurons, Conf.trial_len))
+
+    # conds = [Conf.init_step, Conf.a_step, Conf.b_step] if Conf.init_step is not None else [Conf.a_step, Conf.b_step]
+    conds = ['init', 'a', 'b'] if layouts.shape[1] == 3 else ['a', 'b']
+    h_mean_all_layouts = np.zeros((len(conds), n_ports, n_p_bins, n_neurons, Conf.trial_len))
     # for k in neur_ids:
     #     vmax = np.percentile(hidden_trial[:,:,:,k], 99)
 
     # inputs_arg_trial = np.argmax(inputs_trial[:,:,:Conf.x_dim], axis=-1)[:,0,:]
     # inputs_arg_trial = np.repeat(inputs_arg_trial[:, np.newaxis, :], inputs_trial.shape[1], axis=1)
 
-    for port_id in range(Conf.port_dim):
+    hiddens_trial = np.array_split(hiddens, hiddens.shape[1]//Conf.trial_len, axis=1)
+    hiddens_trial = np.stack(hiddens_trial, axis=1)
+
+    for port_id in range(n_ports):
         for row, step in enumerate(conds):
-            step_type_trial_mask = inputs_arg_trial[:, :, step] == port_id
-            if len(anomalous_batches):
-                anomaly_mask = anomalous_batches[:, np.newaxis] * np.ones_like(step_type_trial_mask, dtype=bool)
-            # print(step_type_trial_mask.shape, anomaly_mask.shape)
-                mask = np.logical_and(np.logical_not(anomaly_mask), step_type_trial_mask)
-            else:
-                mask = np.expand_dims(step_type_trial_mask, -1)
+            batch_mask = layouts[:, row] == port_id  # get the batches which involve the port
+
+            hiddens_trial_masked = hiddens_trial[batch_mask]
+            bins_masked = bins[batch_mask]
+            # step_type_trial_mask = inputs_arg_trial[:, :, step] == port_id
+            # mask = np.expand_dims(step_type_trial_mask, -1)
 
             for bin_id in range(n_p_bins):
-                p_bin_mask = bins == bin_id
+                p_bin_mask = bins_masked == bin_id
 
                 if np.any(p_bin_mask):
-                    trial_mask = np.logical_and(mask, p_bin_mask)
-
-                    trial_idxs = np.where(trial_mask)
+                    trial_idxs = np.where(p_bin_mask)
                     # print(port_id, ['init', 'a', 'b'][row], bin_id, trial_idxs[0].shape)
 
-                    h = hidden_trial[trial_idxs[0], trial_idxs[1], :, :]
+                    h = hiddens_trial_masked[trial_idxs[0], trial_idxs[1], :, :]
                     if h.shape[0]:
                         h_mean = np.mean(h, axis=0)
                         h_mean_all_layouts[row, port_id, bin_id, :, :] = np.transpose(h_mean, (1,0))

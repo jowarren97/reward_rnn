@@ -116,8 +116,8 @@ class LearningLogger:
         x_trial_stages = ['nothing' for _ in range(self.config.trial_len)]
         if self.config.init_step is not None: x_trial_stages[self.config.init_step] = 'init'
         x_trial_stages[self.config.r_step] = 'reward'
-        x_trial_stages[self.config.a_step] = 'a'
-        x_trial_stages[self.config.b_step] = 'b'
+        if self.config.a_step is not None: x_trial_stages[self.config.a_step] = 'a'
+        if self.config.b_step is not None: x_trial_stages[self.config.b_step] = 'b'
         print('Accuracy each step (a):\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(self.a_accuracy_steps, a_trial_stages)]))
         if self.config.predict_x:
             print('Accuracy each step (x):\t' + ',\t'.join([f'{t}: {a:.1f}' for a, t in zip(self.x_accuracy_steps, x_trial_stages)]))

@@ -555,7 +555,14 @@ class ReversalEnvironment(Environment):
         #     perms = self.all_layouts
         # else:
         max_idx = len(self.layouts)
-        idxs = torch.randint(0, max_idx, (self.config.batch_size,))
+        # idxs = torch.randint(0, max_idx, (self.config.batch_size,))
+        leftover = self.config.batch_size
+        idxs = []
+        while leftover > 0:
+            idxs.append(torch.randperm(max_idx)[:min(max_idx, leftover)])
+            leftover -= max_idx
+        idxs = torch.concat(idxs)
+        
         perms = self.layouts[idxs]
 
         return self.perm_to_port_vectors(perms, self.config.x_dim)

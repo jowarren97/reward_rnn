@@ -642,4 +642,3 @@ def plot_diagonal_sums(HP, PFC,c_1 = 1, perm_n = 2, dlc = False, animal_perm = F
         plt.title(str_title[d])
         sns.despine()
     plt.tight_layout()
-
